@@ -19,8 +19,9 @@ env:
   APPLE_ID: florian@zaruba.email
 
 jobs:
+  # Only if this was manually triggered
   create-release:
-    name: Update release description with version info
+    name: Create new release
     runs-on: ubuntu-latest
     if: ${{ github.event_name != 'pull_request' }}
     outputs:
@@ -39,7 +40,7 @@ jobs:
           fi
           echo "tag=${tag}" >> $GITHUB_OUTPUT
 
-      - name: Update release description
+      - name: Create new release
         run: |
           gh release create ${{ steps.release_tag.outputs.tag }} --target ${{ github.sha }} \
             --title "EDA Tool Release ${{ steps.release_tag.outputs.tag }}" \
@@ -49,26 +50,28 @@ jobs:
          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   check-submodule:
-    name: Check if Submodule SHA has Changed
+    name: Check for changes
     runs-on: ubuntu-latest
     needs: create-release
+    if: ${{ always() }}
     outputs:
-      build_slang: ${{ steps.check_submodules.outputs.sha_changed || 'false' }}  # Default to false if not set
+      build_slang: ${{ steps.check_submodules.outputs.build_slang }}  # Default to false if not set
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           submodules: true
       - name: Check for submodule changes
         id: check_submodules
         run: |
           SUBMODULE_PATH="slang"
-          PREV_SHA=$(git ls-tree HEAD^ $SUBMODULE_PATH | awk '{ print $3 }')  # Get previous commit's submodule SHA
-          CURRENT_SHA=$(git ls-tree HEAD $SUBMODULE_PATH | awk '{ print $3 }')  # Get current commit's submodule SHA
-          echo "Previous SHA: $PREV_SHA"
+          # Fetch the latest commit from the main branch
+          git fetch origin main
+          BASE_SHA=$(git ls-tree origin/main @ $SUBMODULE_PATH | awk '{ print $3 }')
+          CURRENT_SHA=$(git ls-tree HEAD @ $SUBMODULE_PATH | awk '{ print $3 }')
+          echo "Base SHA on main branch: $BASE_SHA"
           echo "Current SHA: $CURRENT_SHA"
 
-          if [ "$PREV_SHA" != "$CURRENT_SHA" ]; then
+          if [ "$BASE_SHA" != "$CURRENT_SHA" ]; then
             echo "Submodule SHA has changed"
             echo "build_slang=true" >> $GITHUB_OUTPUT
           else
@@ -77,9 +80,10 @@ jobs:
           fi
 
   build-and-upload-slang:
+    name: Build (and upload) `slang`
     uses: ./.github/workflows/slang.yml
-    needs: [create-release, check-submodule]
-    if: needs.check-submodule.outputs.build_slang == 'true'
+    needs: [check-submodule, create-release]
+    if: ${{ (always() && needs.check-submodule.outputs.build_slang == 'true') || github.event_name != 'pull_request' }}
     with:
       release_version: ${{ needs.create-release.outputs.release_version }}
     secrets:
