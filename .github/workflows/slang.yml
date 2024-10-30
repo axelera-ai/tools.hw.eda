@@ -32,11 +32,11 @@ jobs:
       matrix:
         include:
           - preset: gcc-11-release
-            os: ci-prod-AWS-CPU-X86_64-NATIVE
+            os: ci-prod-AWS-CPU-X86_64-EKS
             arch: amd64
             label: ubuntu-20.04
           - preset: gcc-11-release
-            os: ci-prod-AWS-CPU-ARM64-NATIVE
+            os: ci-prod-AWS-CPU-ARM64-EKS
             arch: arm64
             label: ubuntu-20.04
           - preset: macos-release
