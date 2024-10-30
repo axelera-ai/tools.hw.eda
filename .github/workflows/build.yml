@@ -9,9 +9,9 @@ on:
         required: false
         type: string
 
-  push:
+  pull_request:
     branches:
-      - zarubaf/feature/build-in-ci
+      - main
 
 env:
   APPLE_ID_NAME: Florian Zaruba
@@ -24,10 +24,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_version: ${{ steps.release_tag.outputs.tag }}
+      build-slang: ${{ steps.check_submodules.outputs.build_slang }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: false
       - name: Release version
         id: release_tag
         run: |
@@ -40,19 +42,48 @@ jobs:
       - name: Update release description
         run: |
           gh release create ${{ steps.release_tag.outputs.tag }} --target ${{ github.sha }} \
-            --title "Slang Tool Release ${{ steps.release_tag.outputs.tag }}" \
-            --notes "Contains slang binaries." \
+            --title "EDA Tool Release ${{ steps.release_tag.outputs.tag }}" \
+            --notes "Various binaries for EDA tools." \
             --generate-notes
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  check-submodule:
+    name: Check if Submodule SHA has Changed
+    runs-on: ubuntu-latest
+    needs: create-release
+    outputs:
+      build_slang: ${{ steps.check_submodules.outputs.sha_changed || 'false' }}  # Default to false if not set
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+      - name: Check for submodule changes
+        id: check_submodules
+        run: |
+          SUBMODULE_PATH="slang"
+          PREV_SHA=$(git ls-tree HEAD^ $SUBMODULE_PATH | awk '{ print $3 }')  # Get previous commit's submodule SHA
+          CURRENT_SHA=$(git ls-tree HEAD $SUBMODULE_PATH | awk '{ print $3 }')  # Get current commit's submodule SHA
+          echo "Previous SHA: $PREV_SHA"
+          echo "Current SHA: $CURRENT_SHA"
+
+          if [ "$PREV_SHA" != "$CURRENT_SHA" ]; then
+            echo "Submodule SHA has changed"
+            echo "build_slang=true" >> $GITHUB_OUTPUT
+          else
+            echo "Submodule SHA has not changed"
+            echo "build_slang=false" >> $GITHUB_OUTPUT
+          fi
 
   build-and-upload-slang:
     uses: ./.github/workflows/slang.yml
-    needs: create-release
+    needs: [create-release, check-submodule]
+    if: needs.create-release.outputs.build_slang == 'true'
     with:
       release_version: ${{ needs.create-release.outputs.release_version }}
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       APPLE_CERT_DATA: ${{ secrets.APPLE_CERT_DATA }}
       APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
       APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}

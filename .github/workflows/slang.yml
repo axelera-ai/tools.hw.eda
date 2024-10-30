@@ -5,10 +5,11 @@ on:
     inputs:
       release_version:
         description: "Release Version"
-        required: true
+        required: false
         type: string
+        default: ""
     secrets:
-      GITHUB_TOKEN:
+      GH_TOKEN:
         description: "Github token for release"
       APPLE_CERT_DATA:
         description: "API key for deployment"
@@ -22,6 +23,7 @@ env:
   APPLE_ID_NAME: Florian Zaruba
   APPLE_TEAM_ID: 4LZSA9ML57
   APPLE_ID: florian@zaruba.email
+  WORKING_DIR: slang
 
 jobs:
   build:
@@ -49,6 +51,7 @@ jobs:
           submodules: 'true'
           fetch-depth: 0
       - name: Install dependencies
+
         if: ${{ contains(matrix.os, 'ci-prod-') }}
         run: |
           wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
@@ -68,15 +71,22 @@ jobs:
               g++-13 g++-11 clang-18 clang-tidy-18 \
               gh \
               cmake
+
       - uses: maxim-lobanov/setup-xcode@v1
         if: matrix.os == 'macos-latest'
         with:
           xcode-version: 'latest'
+
       - name: Configure
+        working-directory: ${{ env.WORKING_DIR }}
         run: cmake --preset ${{ matrix.preset }} -DSLANG_CI_BUILD=ON
+
       - name: Build
+        working-directory: ${{ env.WORKING_DIR }}
         run: cmake --build build/${{ matrix.preset }} --target install -j8
+
       - name: Run tests
+        working-directory: ${{ env.WORKING_DIR }}
         run: ctest --test-dir build/${{ matrix.preset }} --output-on-failure --no-tests=error -j8
 
       - name: Install certificate
@@ -88,6 +98,7 @@ jobs:
 
       - name: Sign the build
         if: matrix.os == 'macos-latest'
+        working-directory: ${{ env.WORKING_DIR }}
         run: |
             codesign                                                                       \
               --timestamp                                                                  \
@@ -96,21 +107,23 @@ jobs:
               --sign "Developer ID Application: ${{ env. APPLE_ID_NAME }} (${{ env.APPLE_TEAM_ID }})" \
               install/${{ matrix.preset }}/bin/slang*
             ditto -c -k --keepParent install/${{ matrix.preset }} ${{ env.PKG_NAME }}.zip
-            xcrun notarytool submit ${{ env.PKG_NAME }}.zip            \
+            xcrun notarytool submit ${{ env.PKG_NAME }}.zip           \
                     --apple-id ${{ env.APPLE_ID }}                    \
                     --password "${{ secrets.APPLE_NOTARY_PASSWORD }}" \
                     --team-id  ${{ env.APPLE_TEAM_ID }}               \
                     --wait
 
       - name: Re-name and archive the build directory
+        working-directory: ${{ env.WORKING_DIR }}
         run: |
           ARCHIVE_NAME="${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}"
           mv install/${{ matrix.preset }} ${{ env.PKG_NAME }}
           tar -czf "$ARCHIVE_NAME.tar.gz" ${{ env.PKG_NAME }}
 
       - name: Upload (.tar.gz) to release
+        if: ${{ inputs.release_version != '' }}
         run: |
           gh release upload ${{ inputs.release_version }} \
-          ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.tar.gz --clobber
+           ${{ env.WORKING_DIR }}/${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.tar.gz --clobber
         env:
-            GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            GH_TOKEN: ${{ secrets.GH_TOKEN }}
