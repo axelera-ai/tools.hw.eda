@@ -1,0 +1,58 @@
+name: Build Tools and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: Release Version
+        default: ''
+        required: false
+        type: string
+
+  push:
+    branches:
+      - zarubaf/feature/build-in-ci
+
+env:
+  APPLE_ID_NAME: Florian Zaruba
+  APPLE_TEAM_ID: 4LZSA9ML57
+  APPLE_ID: florian@zaruba.email
+
+jobs:
+  create-release:
+    name: Update release description with version info
+    runs-on: ubuntu-latest
+    outputs:
+      release_version: ${{ steps.release_tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Release version
+        id: release_tag
+        run: |
+          tag=$(date +%Y_%m_%d)
+          if [ -n "${{ github.event.inputs.release_version }}" ]; then \
+            tag=${{ github.event.inputs.release_version }}
+          fi
+          echo "tag=${tag}" >> $GITHUB_OUTPUT
+
+      - name: Update release description
+        run: |
+          gh release create ${{ steps.release_tag.outputs.tag }} --target ${{ github.sha }} \
+            --title "Slang Tool Release ${{ steps.release_tag.outputs.tag }}" \
+            --notes "Contains slang binaries." \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-and-upload-slang:
+    uses: ./.github/workflows/slang.yml
+    needs: create-release
+    with:
+      release_version: ${{ needs.create-release.outputs.release_version }}
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      APPLE_CERT_DATA: ${{ secrets.APPLE_CERT_DATA }}
+      APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+      APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
