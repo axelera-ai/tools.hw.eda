@@ -22,9 +22,9 @@ jobs:
   create-release:
     name: Update release description with version info
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' }}
     outputs:
       release_version: ${{ steps.release_tag.outputs.tag }}
-      build-slang: ${{ steps.check_submodules.outputs.build_slang }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -79,7 +79,7 @@ jobs:
   build-and-upload-slang:
     uses: ./.github/workflows/slang.yml
     needs: [create-release, check-submodule]
-    if: needs.create-release.outputs.build_slang == 'true'
+    if: needs.check-submodule.outputs.build_slang == 'true'
     with:
       release_version: ${{ needs.create-release.outputs.release_version }}
     secrets:
