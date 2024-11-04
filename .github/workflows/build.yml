@@ -13,11 +13,6 @@ on:
     branches:
       - main
 
-env:
-  APPLE_ID_NAME: Florian Zaruba
-  APPLE_TEAM_ID: 4LZSA9ML57
-  APPLE_ID: florian@zaruba.email
-
 jobs:
   # Only if this was manually triggered
   create-release:
@@ -55,35 +50,39 @@ jobs:
     needs: create-release
     if: ${{ always() }}
     outputs:
-      build_slang: ${{ steps.check_submodules.outputs.build_slang }}  # Default to false if not set
+      build_slang: ${{ steps.check_submodule_slang.outputs.build }}  # Default to false if not set
+      build_verilator: ${{ steps.check_submodule_verilator.outputs.build }}  # Default to false if not set
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
       - name: Check for submodule changes
-        id: check_submodules
+        id: check_submodule_slang
         run: |
-          SUBMODULE_PATH="slang"
-          # Fetch the latest commit from the main branch
-          git fetch origin main
-          BASE_SHA=$(git ls-tree origin/main @ $SUBMODULE_PATH | awk '{ print $3 }')
-          CURRENT_SHA=$(git ls-tree HEAD @ $SUBMODULE_PATH | awk '{ print $3 }')
-          echo "Base SHA on main branch: $BASE_SHA"
-          echo "Current SHA: $CURRENT_SHA"
-
-          if [ "$BASE_SHA" != "$CURRENT_SHA" ]; then
-            echo "Submodule SHA has changed"
-            echo "build_slang=true" >> $GITHUB_OUTPUT
-          else
-            echo "Submodule SHA has not changed"
-            echo "build_slang=false" >> $GITHUB_OUTPUT
-          fi
+          ./ci/check_submodule_change.sh slang
+      - name: Check for submodule changes
+        id: check_submodule_verilator
+        run: |
+          ./ci/check_submodule_change.sh verilator
 
   build-and-upload-slang:
     name: Build (and upload) `slang`
     uses: ./.github/workflows/slang.yml
     needs: [check-submodule, create-release]
     if: ${{ (always() && needs.check-submodule.outputs.build_slang == 'true') || github.event_name != 'pull_request' }}
+    with:
+      release_version: ${{ needs.create-release.outputs.release_version }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      APPLE_CERT_DATA: ${{ secrets.APPLE_CERT_DATA }}
+      APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+      APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+
+  build-and-upload-verilator:
+    name: Build (and upload) `verliator`
+    uses: ./.github/workflows/verilator.yml
+    needs: [check-submodule, create-release]
+    if: ${{ (always() && needs.check-submodule.outputs.build_verilator == 'true') || github.event_name != 'pull_request' }}
     with:
       release_version: ${{ needs.create-release.outputs.release_version }}
     secrets:
