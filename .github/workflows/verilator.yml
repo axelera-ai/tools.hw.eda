@@ -1,4 +1,4 @@
-name: Build and Upload Slang
+name: Build and Upload Verilator
 
 on:
   workflow_call:
@@ -19,7 +19,7 @@ on:
         description: "App specific notary password"
 
 env:
-  PKG_NAME: slang
+  PKG_NAME: verilator
 
 jobs:
   build:
@@ -27,18 +27,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - preset: gcc-11-release
-            os: ci-prod-AWS-CPU-X86_64-EKS
+          - os: ci-prod-AWS-CPU-X86_64-EKS
             arch: amd64
             label: ubuntu-20.04
-          - preset: gcc-11-release
-            os: ci-prod-AWS-CPU-ARM64-EKS
+            generic-os: linux
+          - os: ci-prod-AWS-CPU-ARM64-EKS
             arch: arm64
             label: ubuntu-20.04
-          - preset: macos-release
-            os: macos-latest
+            generic-os: linux
+          - os: macos-latest
             arch: arm64
             label: macos
+            generic-os: osx
+    env:
+      CI_OS_NAME: ${{ matrix.generic-os }}
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -46,41 +48,48 @@ jobs:
         with:
           submodules: 'true'
           fetch-depth: 0
-      
-      - name: Install dependencies
-        if: ${{ contains(matrix.os, 'ci-prod-') }}
-        run: |
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          sudo add-apt-repository "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-18 main"
-          sudo add-apt-repository ppa:ubuntu-toolchain-r/test
-          sudo apt-key adv --fetch-keys https://apt.kitware.com/keys/kitware-archive-latest.asc
-          DISTRO_CODENAME=$(lsb_release -cs)
-          sudo apt-add-repository "deb https://apt.kitware.com/ubuntu/ $DISTRO_CODENAME main"
-          sudo apt-get update && \
-          sudo apt-get install -y \
-              build-essential \
-              g++-13 g++-11 clang-18 clang-tidy-18 \
-              cmake
 
       - uses: maxim-lobanov/setup-xcode@v1
         if: matrix.os == 'macos-latest'
         with:
-          xcode-version: ^16.0.0
+            xcode-version: 'latest'
 
-      - name: Configure
+      - name: Set up Homebrew
+        if: matrix.os == 'macos-latest'
+        id: set-up-homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Install packages for build
+        if: ${{ contains(matrix.os, 'ci-prod-') }}
         working-directory: ${{ env.PKG_NAME }}
         run: |
-            cmake --preset ${{ matrix.preset }} \
-              -DSLANG_CI_BUILD=ON \
-              -DCMAKE_INSTALL_PREFIX=`pwd`/install
+          sudo apt-get update && \
+          sudo apt-get install -y \
+              build-essential \
+              ccache help2man libfl-dev \
+              libgoogle-perftools-dev \
+              libsystemc libsystemc-dev \
+              autoconf bison
+
+      - name: Install packages for build
+        if: matrix.os == 'macos-latest'
+        working-directory: ${{ env.PKG_NAME }}
+        run: |
+          brew install ccache perl gperftools autoconf help2man bison
 
       - name: Build
         working-directory: ${{ env.PKG_NAME }}
-        run: cmake --build build/${{ matrix.preset }} --target install -j8
-
-      - name: Run tests
-        working-directory: ${{ env.PKG_NAME }}
-        run: ctest --test-dir build/${{ matrix.preset }} --output-on-failure --no-tests=error -j8
+        run: |
+            if [ "$CI_OS_NAME" = "linux" ]; then
+                NPROC=$(nproc)
+            elif [ "$CI_OS_NAME" = "osx" ]; then
+                NPROC=$(sysctl -n hw.logicalcpu)
+            fi
+            autoconf
+            ./configure --prefix=`pwd`/install
+            ccache -z
+            make -j "$NPROC" -k
+            make install
 
       - name: Sign and package
         uses: ./.github/actions/package

@@ -1,0 +1,101 @@
+name: Common Packaging Steps
+description: "Common packaging steps for all packages"
+
+inputs:
+  working_directory:
+    description: "Working directory"
+    default: "."
+    required: false
+  matrix_label:
+    description: "Build Label"
+    required: true
+  matrix_arch:
+    description: "Architecture to build for."
+    required: true
+  pkg_name:
+    description: "package name"
+    required: true
+  apple_cert_data:
+    description: "Apple certificate data"
+    required: true
+  apple_cert_password:
+    description: "Apple certificate password"
+    required: true
+  apple_notary_password:
+    description: "Apple notary password"
+    required: true
+  release_version:
+    description: "Release version"
+    required: true
+  gh_token:
+    description: "Matrix label"
+    required: true
+  apple_id:
+    description: "Apple ID"
+    default: "florian@zaruba.email"
+    required: false
+  apple_id_name:
+    description: "Apple ID name"
+    default: "Florian Zaruba"
+    required: false
+  apple_team_id:
+    description: "Apple team ID"
+    default: "4LZSA9ML57"
+    required: false
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install certificate
+      if: contains(inputs.matrix_label, 'macos')
+      uses: apple-actions/import-codesign-certs@v3
+      with:
+        p12-file-base64: ${{ inputs.apple_cert_data }}
+        p12-password: ${{ inputs.apple_cert_password }}
+
+    - name: Sign the build
+      working-directory: ${{ inputs.working_directory }}
+      shell: bash
+      if: contains(inputs.matrix_label, 'macos')
+      run: |
+        codesign \
+          --timestamp \
+          --options=runtime \
+          --force --verify --verbose \
+          --sign "Developer ID Application: ${{ inputs.apple_id_name }} (${{ inputs.apple_team_id }})" \
+          install/bin/${{ inputs.pkg_name }}*
+        ditto -c -k --keepParent install ${{ inputs.pkg_name }}.zip
+        xcrun notarytool submit ${{ inputs.pkg_name }}.zip \
+            --apple-id ${{ inputs.apple_id }} \
+            --password "${{ inputs.apple_notary_password }}" \
+            --team-id ${{ inputs.apple_team_id }} \
+            --wait | tee notary.log
+        grep -q Accepted notary.log
+
+    - name: Re-name and archive the build directory
+      working-directory: ${{ inputs.working_directory }}
+      shell: bash
+      run: |
+        ARCHIVE_NAME="${{ inputs.pkg_name }}-${{ inputs.matrix_arch }}-${{ inputs.matrix_label }}"
+        mv install ${{ inputs.pkg_name }}
+        tar -czf "$ARCHIVE_NAME.tar.gz" ${{ inputs.pkg_name }}
+
+    - name: Install GithubCli
+      shell: bash
+      if: ${{ contains(inputs.matrix_label, 'ubuntu-20.04') }}
+      run: |
+            (type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)) \
+            && sudo mkdir -p -m 755 /etc/apt/keyrings \
+            && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+            && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+            && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+            && sudo apt update \
+            && sudo apt install gh -y
+
+    - name: Upload (.tar.gz) to release
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.gh_token }}
+      run: |
+        gh release upload ${{ inputs.release_version }} \
+          ${{ inputs.working_directory }}/${{ inputs.pkg_name }}-${{ inputs.matrix_arch }}-${{ inputs.matrix_label }}.tar.gz --clobber

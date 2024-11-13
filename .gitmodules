@@ -1,3 +1,6 @@
 [submodule "slang"]
 	path = slang
 	url = https://github.com/MikePopoloski/slang.git
+[submodule "verilator"]
+	path = verilator
+	url = https://github.com/verilator/verilator.git
