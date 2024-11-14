@@ -10,6 +10,7 @@ Head over to the [releases section](https://github.com/axelera-ai/tools.hw.eda/r
 
 - [`slang`](https://github.com/MikePopoloski/slang): A SystemVerilog parser and elaborator.
 - [`verilator`](https://github.com/verilator/verilator): A fast SystemVerilog simulator that translates SystemVerilog to C++/SystemC.
+- [`yosys`](https://github.com/povik/yosys-slang): An open-source synthesiser, built with `slang` support
 
 ## Supported Platforms
 
