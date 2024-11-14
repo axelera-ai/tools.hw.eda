@@ -63,7 +63,7 @@ runs:
           --options=runtime \
           --force --verify --verbose \
           --sign "Developer ID Application: ${{ inputs.apple_id_name }} (${{ inputs.apple_team_id }})" \
-          install/bin/${{ inputs.pkg_name }}*
+          install/bin/*
         ditto -c -k --keepParent install ${{ inputs.pkg_name }}.zip
         xcrun notarytool submit ${{ inputs.pkg_name }}.zip \
             --apple-id ${{ inputs.apple_id }} \
@@ -77,6 +77,7 @@ runs:
       shell: bash
       run: |
         ARCHIVE_NAME="${{ inputs.pkg_name }}-${{ inputs.matrix_arch }}-${{ inputs.matrix_label }}"
+        rm -rf ${{ inputs.pkg_name }}
         mv install ${{ inputs.pkg_name }}
         tar -czf "$ARCHIVE_NAME.tar.gz" ${{ inputs.pkg_name }}
 
