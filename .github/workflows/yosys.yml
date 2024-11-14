@@ -1,0 +1,122 @@
+name: Build and Upload Yosys
+
+on:
+  workflow_call:
+    inputs:
+      release_version:
+        description: "Release Version"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      GH_TOKEN:
+        description: "Github token for release"
+      APPLE_CERT_DATA:
+        description: "API key for deployment"
+      APPLE_CERT_PASSWORD:
+        description: "Access token for secure operations"
+      APPLE_NOTARY_PASSWORD:
+        description: "App specific notary password"
+
+env:
+  PKG_NAME: yosys
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - preset: gcc-11-release
+            os: ci-prod-AWS-CPU-X86_64-EKS
+            arch: amd64
+            label: ubuntu-20.04
+          - preset: gcc-11-release
+            os: ci-prod-AWS-CPU-ARM64-EKS
+            arch: arm64
+            label: ubuntu-20.04
+          - preset: macos-release
+            os: macos-latest
+            arch: arm64
+            label: macos
+
+    env:
+      CI_OS_NAME: ${{ matrix.generic-os }}
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+          fetch-depth: 0
+
+      - name: Install dependencies
+        if: ${{ contains(matrix.os, 'ci-prod-') }}
+        run: |
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          sudo add-apt-repository "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-18 main"
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+          sudo apt-key adv --fetch-keys https://apt.kitware.com/keys/kitware-archive-latest.asc
+          DISTRO_CODENAME=$(lsb_release -cs)
+          sudo apt-add-repository "deb https://apt.kitware.com/ubuntu/ $DISTRO_CODENAME main"
+          sudo apt-get update && \
+          sudo apt-get install -y install \
+            gperf build-essential bison flex libreadline-dev gawk tcl-dev libffi-dev git graphviz xdot pkg-config python3 \
+            libboost-system-dev libboost-python-dev libboost-filesystem-dev zlib1g-dev clang-18 clang-tidy-18
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        if: matrix.os == 'macos-latest'
+        with:
+          xcode-version: ^16.0.0
+
+      - name: Set up Homebrew
+        if: matrix.os == 'macos-latest'
+        id: set-up-homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Install packages for build
+        if: matrix.os == 'macos-latest'
+        working-directory: ${{ env.PKG_NAME }}
+        run: |
+          brew install bison flex gawk libffi pkg-config bash autoconf
+
+      - name: Configure
+        working-directory: ${{ env.PKG_NAME }}
+        run: |
+            make config-clang
+
+      - name: Build
+        working-directory: ${{ env.PKG_NAME }}
+        run: |
+            if [ "$CI_OS_NAME" = "linux" ]; then
+                NPROC=$(nproc)
+            elif [ "$CI_OS_NAME" = "osx" ]; then
+                NPROC=$(sysctl -n hw.logicalcpu)
+            fi
+            autoconf
+            ./configure --prefix=`pwd`/install
+            ccache -z
+            make -j "$NPROC"
+            make install PREFIX=`pwd`/install
+
+      # Install yosys-slang plugin
+      - name: Build yosys-slang
+        working-directory: yosys-slang
+        run: |
+          make YOSYS_PREFIX=`pwd`/../yosys/install/bin/ CXXFLAGS="-std=c++20 -I`pwd`/../yosys" -j12 CC=clang CXX=clang++
+          mkdir -p `pwd`/../yosys/install/plugins
+          cp build/slang.so `pwd`/../yosys/install/plugins
+
+      - name: Sign and package
+        uses: ./.github/actions/package
+        if: ${{ inputs.release_version != '' }}
+        with:
+            working_directory: ${{ env.PKG_NAME }}
+            pkg_name: ${{ env.PKG_NAME }}
+            matrix_arch: ${{ matrix.arch }}
+            matrix_label: ${{ matrix.label }}
+            release_version: ${{ inputs.release_version }}
+            apple_cert_data: ${{ secrets.APPLE_CERT_DATA }}
+            apple_cert_password: ${{ secrets.APPLE_CERT_PASSWORD }}
+            apple_notary_password: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+            gh_token: ${{ secrets.GH_TOKEN  }}
