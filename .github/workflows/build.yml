@@ -79,10 +79,23 @@ jobs:
       APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
 
   build-and-upload-verilator:
-    name: Build (and upload) `verliator`
+    name: Build (and upload) `verilator`
     uses: ./.github/workflows/verilator.yml
     needs: [check-submodule, create-release]
     if: ${{ (always() && needs.check-submodule.outputs.build_verilator == 'true') || github.event_name != 'pull_request' }}
+    with:
+      release_version: ${{ needs.create-release.outputs.release_version }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      APPLE_CERT_DATA: ${{ secrets.APPLE_CERT_DATA }}
+      APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+      APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+
+  build-and-upload-yosys:
+    name: Build (and upload) `yosys`
+    uses: ./.github/workflows/yosys.yml
+    needs: [create-release]
+    # if: ${{ (always() && needs.check-submodule.outputs.build_verilator == 'true') || github.event_name != 'pull_request' }}
     with:
       release_version: ${{ needs.create-release.outputs.release_version }}
     secrets:
