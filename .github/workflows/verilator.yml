@@ -27,11 +27,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ci-prod-AWS-CPU-X86_64-EKS
+          - os: production-AWS-CPU-X86_64-EKS
+            runner_labels: production-scale-set-x64-8-32
             arch: amd64
             label: ubuntu-20.04
             generic-os: linux
-          - os: ci-prod-AWS-CPU-ARM64-EKS
+          - os: production-AWS-CPU-ARM64-EKS
+            runner_labels: production-scale-set-arm64-8-16
             arch: arm64
             label: ubuntu-20.04
             generic-os: linux
@@ -42,7 +44,9 @@ jobs:
     env:
       CI_OS_NAME: ${{ matrix.generic-os }}
 
-    runs-on: ${{ matrix.os }}
+    runs-on:
+      group: ${{ matrix.os }}
+      labels: ${{ matrix.runner_labels }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,7 +64,7 @@ jobs:
         uses: Homebrew/actions/setup-homebrew@master
 
       - name: Install packages for build
-        if: ${{ contains(matrix.os, 'ci-prod-') }}
+        if: ${{ contains(matrix.os, 'production-') }}
         working-directory: ${{ env.PKG_NAME }}
         run: |
           sudo apt-get update && \
