@@ -1,7 +1,9 @@
 ---
 version: 2
 updates:
-  - package-ecosystem: "gitsubmodule"
+  # Submodule updates are handled by .github/workflows/update-submodules.yml
+  # which tracks upstream releases only (not every commit).
+  - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
