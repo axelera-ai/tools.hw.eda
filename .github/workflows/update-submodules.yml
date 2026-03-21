@@ -20,6 +20,12 @@ jobs:
           - tool: verilator
             repo: verilator/verilator
             path: verilator
+          - tool: yosys
+            repo: YosysHQ/yosys
+            path: yosys
+          - tool: yosys-slang
+            repo: povik/yosys-slang
+            path: yosys-slang
           - tool: opensta
             repo: The-OpenROAD-Project/OpenSTA
             path: opensta
