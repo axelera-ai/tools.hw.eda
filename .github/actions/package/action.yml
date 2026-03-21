@@ -48,7 +48,7 @@ runs:
   steps:
     - name: Install certificate
       if: contains(inputs.matrix_label, 'macos')
-      uses: apple-actions/import-codesign-certs@v3
+      uses: apple-actions/import-codesign-certs@v5
       with:
         p12-file-base64: ${{ inputs.apple_cert_data }}
         p12-password: ${{ inputs.apple_cert_password }}
