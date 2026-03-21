@@ -83,10 +83,11 @@ jobs:
       - name: Install packages for build (macOS)
         if: ${{ matrix.label == 'macos' }}
         run: |
-          brew install bison flex swig tcl-tk@8 ccache
+          brew install bison flex swig ccache
+          brew install tcl-tk@8 2>/dev/null || true
 
       - name: Restore ccache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ccache-opensta-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('opensta/**') }}
