@@ -85,7 +85,7 @@ runs:
 
     - name: Upload build artifact
       if: ${{ inputs.release_version == '' }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: ${{ inputs.pkg_name }}-${{ inputs.matrix_arch }}-${{ inputs.matrix_label }}
         path: ${{ inputs.working_directory }}/${{ inputs.pkg_name }}/

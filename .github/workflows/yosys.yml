@@ -81,7 +81,7 @@ jobs:
           brew install bison flex gawk bash autoconf ccache
 
       - name: Restore ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ccache-yosys-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('yosys/**', 'yosys-slang/**') }}
@@ -100,7 +100,7 @@ jobs:
             git submodule update --init --recursive
             make config-clang ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0
 
-      - name: Build
+      - name: Build yosys
         working-directory: ${{ env.PKG_NAME }}
         run: |
             if [ -f /etc/redhat-release ]; then
@@ -109,31 +109,53 @@ jobs:
               NPROC=$(sysctl -n hw.logicalcpu)
             fi
             make -j "$NPROC" ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0 ENABLE_CCACHE=1
-            make install ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0 PREFIX=$(pwd)/install
 
-      - name: Verify linking
-        working-directory: ${{ env.PKG_NAME }}
-        run: |
-            if [ -f /etc/redhat-release ]; then
-              echo "=== ldd output ==="
-              ldd install/bin/yosys || true
-            else
-              echo "=== otool -L output ==="
-              otool -L install/bin/yosys || true
-            fi
-
-      # Install yosys-slang plugin
-      - name: Build yosys-slang
+      - name: Build yosys-slang (static)
         working-directory: yosys-slang
         run: |
+          git submodule update --init --recursive
+          YOSYS_INCLUDE=$(pwd)/../yosys/install/share/yosys/include
+          # Build as static library first so we have yosys-config available
+          make install ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0 PREFIX=$(pwd)/../yosys/install -C ../yosys
+          cmake -S . -B build \
+            -DYOSYS_CONFIG=$(pwd)/../yosys/install/bin/yosys-config \
+            -DBUILD_AS_PLUGIN=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_FLAGS="-I${YOSYS_INCLUDE}"
           if [ -f /etc/redhat-release ]; then
             NPROC=$(nproc)
           else
             NPROC=$(sysctl -n hw.logicalcpu)
           fi
-          git submodule update --init --recursive
-          make YOSYS_PREFIX=$(pwd)/../yosys/install/bin/ CXXFLAGS="-std=c++20 -I$(pwd)/../yosys" -j"$NPROC" CC=clang CXX=clang++
-          cp build/slang.so $(pwd)/../yosys/install/bin/
+          cmake --build build -j"$NPROC"
+
+      - name: Re-link yosys with yosys-slang built-in
+        working-directory: ${{ env.PKG_NAME }}
+        run: |
+            SLANG_DIR=$(pwd)/../yosys-slang/build
+            if [ -f /etc/redhat-release ]; then
+              FORCE_LOAD="-Wl,--whole-archive ${SLANG_DIR}/libyosys-slang.a -Wl,--no-whole-archive"
+            else
+              FORCE_LOAD="-Wl,-force_load,${SLANG_DIR}/libyosys-slang.a"
+            fi
+            rm -f yosys
+            make ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0 ENABLE_CCACHE=1 \
+              EXE_LIBS="${FORCE_LOAD} ${SLANG_DIR}/third_party/slang/lib/libsvlang.a ${SLANG_DIR}/third_party/slang/lib/libfmt.a"
+            make install ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0 PREFIX=$(pwd)/install
+
+      - name: Verify build
+        working-directory: ${{ env.PKG_NAME }}
+        run: |
+            echo "=== Checking read_slang command ==="
+            install/bin/yosys -H | grep read_slang
+            echo "=== Checking dynamic linking ==="
+            if [ -f /etc/redhat-release ]; then
+              ldd install/bin/yosys || true
+            else
+              otool -L install/bin/yosys || true
+            fi
 
       - name: Print ccache stats
         if: always()
