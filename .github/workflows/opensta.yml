@@ -103,6 +103,9 @@ jobs:
         working-directory: ${{ env.PKG_NAME }}
         run: |
             mkdir -p build && cd build
+            # SWIG 4.x is not recognized as >= 3.0 by CMake 4.x's FindSWIG.
+            # Remove the version requirement — SWIG 4.x is fully compatible.
+            sed -i.bak 's/find_package(SWIG REQUIRED 3\.0)/find_package(SWIG REQUIRED)/' ../CMakeLists.txt
             if [ -f /etc/redhat-release ]; then
               cmake .. \
                 -DCMAKE_INSTALL_PREFIX=$(pwd)/../install \
@@ -113,12 +116,14 @@ jobs:
                 -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
             else
               TCL_PREFIX=$(brew --prefix tcl-tk)
+              BISON_PREFIX=$(brew --prefix bison)
               cmake .. \
                 -DCMAKE_INSTALL_PREFIX=$(pwd)/../install \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                 -DTCL_LIBRARY=${TCL_PREFIX}/lib/libtcl8.6.dylib \
-                -DTCL_INCLUDE_PATH=${TCL_PREFIX}/include
+                -DTCL_INCLUDE_PATH=${TCL_PREFIX}/include \
+                -DBISON_EXECUTABLE=${BISON_PREFIX}/bin/bison
             fi
 
       - name: Build
