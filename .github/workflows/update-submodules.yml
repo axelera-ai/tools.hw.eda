@@ -33,10 +33,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Get latest release tag from upstream
-          LATEST=$(gh api repos/${{ matrix.repo }}/releases/latest --jq '.tag_name' 2>/dev/null || echo "")
+          # Use gh release which handles "no releases" gracefully
+          LATEST=$(gh release view --repo ${{ matrix.repo }} --json tagName --jq '.tagName' 2>/dev/null) || LATEST=""
           if [ -z "$LATEST" ]; then
             # No releases — fall back to latest tag
-            LATEST=$(gh api repos/${{ matrix.repo }}/tags --jq '.[0].name' 2>/dev/null || echo "")
+            LATEST=$(gh api repos/${{ matrix.repo }}/tags --jq '.[0].name' 2>/dev/null) || LATEST=""
           fi
           if [ -z "$LATEST" ]; then
             echo "No releases or tags found for ${{ matrix.repo }}"
