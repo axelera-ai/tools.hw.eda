@@ -58,8 +58,12 @@ jobs:
         if: ${{ matrix.container != '' }}
         run: |
           yum install -y \
-            gperf bison flex gawk git pkgconfig zlib-devel zlib-static \
-            clang gcc-toolset-12-gcc-c++ make wget
+            gperf flex gawk git pkgconfig zlib-devel zlib-static \
+            clang gcc-toolset-12-gcc-c++ make wget m4
+          # yosys v0.63+ requires bison >= 3.6, AlmaLinux 8 ships 3.0.4
+          curl -sL https://ftp.gnu.org/gnu/bison/bison-3.8.2.tar.gz | tar xz
+          cd bison-3.8.2 && ./configure --prefix=/usr/local && make -j$(nproc) && make install && cd ..
+          rm -rf bison-3.8.2
 
       - uses: maxim-lobanov/setup-xcode@v1
         if: ${{ matrix.label == 'macos' }}
