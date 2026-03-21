@@ -22,7 +22,7 @@ jobs:
     outputs:
       release_version: ${{ steps.release_tag.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: false
@@ -53,7 +53,7 @@ jobs:
       build_slang: ${{ steps.check_submodule_slang.outputs.build }}  # Default to false if not set
       build_verilator: ${{ steps.check_submodule_verilator.outputs.build }}  # Default to false if not set
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: true
       - name: Check for submodule changes
