@@ -93,16 +93,8 @@ jobs:
               otool -L install/bin/slang || true
             fi
 
-      - name: Upload build artifact
-        if: ${{ inputs.release_version == '' }}
-        uses: actions/upload-artifact@v4
-        with:
-            name: ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}
-            path: ${{ env.PKG_NAME }}/install/
-
       - name: Sign and package
         uses: ./.github/actions/package
-        if: ${{ inputs.release_version != '' }}
         with:
             working_directory: ${{ env.PKG_NAME }}
             pkg_name: ${{ env.PKG_NAME }}

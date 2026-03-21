@@ -25,11 +25,13 @@ inputs:
     description: "Apple notary password"
     required: true
   release_version:
-    description: "Release version"
-    required: true
+    description: "Release version (empty to skip release upload)"
+    required: false
+    default: ""
   gh_token:
-    description: "Matrix label"
-    required: true
+    description: "Github token for release upload"
+    required: false
+    default: ""
   apple_id:
     description: "Apple ID"
     default: "florian@zaruba.email"
@@ -81,9 +83,16 @@ runs:
         mv install ${{ inputs.pkg_name }}
         tar -czf "$ARCHIVE_NAME.tar.gz" ${{ inputs.pkg_name }}
 
+    - name: Upload build artifact
+      if: ${{ inputs.release_version == '' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.pkg_name }}-${{ inputs.matrix_arch }}-${{ inputs.matrix_label }}
+        path: ${{ inputs.working_directory }}/${{ inputs.pkg_name }}/
+
     - name: Install GithubCli
       shell: bash
-      if: ${{ !contains(inputs.matrix_label, 'macos') }}
+      if: ${{ inputs.release_version != '' && !contains(inputs.matrix_label, 'macos') }}
       run: |
             if command -v apt-get &> /dev/null; then
               (type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)) \
@@ -102,6 +111,7 @@ runs:
             fi
 
     - name: Upload (.tar.gz) to release
+      if: ${{ inputs.release_version != '' }}
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.gh_token }}
