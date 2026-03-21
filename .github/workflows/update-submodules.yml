@@ -20,6 +20,9 @@ jobs:
           - tool: verilator
             repo: verilator/verilator
             path: verilator
+          - tool: opensta
+            repo: The-OpenROAD-Project/OpenSTA
+            path: opensta
 
     steps:
       - uses: actions/checkout@v6
