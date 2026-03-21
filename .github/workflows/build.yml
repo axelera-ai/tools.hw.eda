@@ -52,6 +52,7 @@ jobs:
     outputs:
       build_slang: ${{ steps.check_submodule_slang.outputs.build }}
       build_verilator: ${{ steps.check_submodule_verilator.outputs.build }}
+      build_yosys: ${{ steps.check_submodule_yosys.outputs.build }}
       build_opensta: ${{ steps.check_submodule_opensta.outputs.build }}
     steps:
       - uses: actions/checkout@v6
@@ -65,6 +66,21 @@ jobs:
         id: check_submodule_verilator
         run: |
           ./ci/check_submodule_change.sh verilator
+      - name: Check for submodule changes (yosys)
+        id: check_submodule_yosys
+        run: |
+          # Check both yosys and yosys-slang; rebuild if either changed
+          YOSYS_SHA_BASE=$(git ls-tree origin/main @ yosys | awk '{ print $3 }')
+          YOSYS_SHA_HEAD=$(git ls-tree HEAD @ yosys | awk '{ print $3 }')
+          SLANG_SHA_BASE=$(git ls-tree origin/main @ yosys-slang | awk '{ print $3 }')
+          SLANG_SHA_HEAD=$(git ls-tree HEAD @ yosys-slang | awk '{ print $3 }')
+          if [ "$YOSYS_SHA_BASE" != "$YOSYS_SHA_HEAD" ] || [ "$SLANG_SHA_BASE" != "$SLANG_SHA_HEAD" ]; then
+            echo "Yosys or yosys-slang submodule changed"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No changes in yosys or yosys-slang"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Check for submodule changes (opensta)
         id: check_submodule_opensta
         run: |
@@ -95,6 +111,23 @@ jobs:
       ${{
         always() &&
         (needs.check-submodule.outputs.build_verilator == 'true' || github.event_name != 'pull_request')
+      }}
+    with:
+      release_version: ${{ needs.create-release.outputs.release_version }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      APPLE_CERT_DATA: ${{ secrets.APPLE_CERT_DATA }}
+      APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+      APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+
+  build-and-upload-yosys:
+    name: Build (and upload) `yosys`
+    uses: ./.github/workflows/yosys.yml
+    needs: [check-submodule, create-release]
+    if: >-
+      ${{
+        always() &&
+        (needs.check-submodule.outputs.build_yosys == 'true' || github.event_name != 'pull_request')
       }}
     with:
       release_version: ${{ needs.create-release.outputs.release_version }}
