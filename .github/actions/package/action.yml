@@ -122,5 +122,6 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.gh_token }}
       run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE" || true
         gh release upload ${{ inputs.release_version }} \
           ${{ inputs.working_directory }}/${{ inputs.pkg_name }}-${{ inputs.matrix_arch }}-${{ inputs.matrix_label }}.tar.gz --clobber

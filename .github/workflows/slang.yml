@@ -29,13 +29,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - preset: gcc-11-release
+          - preset: gcc-release
             arch: amd64
             platform: linux
             label: manylinux_2_28
             container: quay.io/pypa/manylinux_2_28_x86_64
             runs_on: '{"group":"production-AWS-CPU-X86_64-EKS","labels":"production-scale-set-x64-8-32"}'
-          - preset: gcc-11-release
+          - preset: gcc-release
             arch: arm64
             platform: linux
             label: manylinux_2_28
@@ -59,12 +59,12 @@ jobs:
       - name: Install dependencies (Linux)
         if: ${{ matrix.container != '' }}
         run: |
-          yum install -y gcc-toolset-11-gcc-c++ cmake3 make ccache
+          yum install -y gcc-toolset-13-gcc-c++ cmake3 make ccache
           # Ensure cmake3 is available as cmake
           alternatives --install /usr/bin/cmake cmake /usr/bin/cmake3 100 || true
-          # Make gcc-toolset-11 compilers available as g++-11/gcc-11
-          ln -sf /opt/rh/gcc-toolset-11/root/usr/bin/g++ /usr/local/bin/g++-11
-          ln -sf /opt/rh/gcc-toolset-11/root/usr/bin/gcc /usr/local/bin/gcc-11
+          # Make gcc-toolset-13 compilers available in PATH
+          ln -sf /opt/rh/gcc-toolset-13/root/usr/bin/g++ /usr/local/bin/g++
+          ln -sf /opt/rh/gcc-toolset-13/root/usr/bin/gcc /usr/local/bin/gcc
 
       - uses: maxim-lobanov/setup-xcode@v1
         if: ${{ matrix.label == 'macos' }}
@@ -96,7 +96,9 @@ jobs:
               -DSLANG_CI_BUILD=ON \
               -DCMAKE_INSTALL_PREFIX=$(pwd)/install \
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER=g++ \
+              -DCMAKE_C_COMPILER=gcc
 
       - name: Build
         working-directory: ${{ env.PKG_NAME }}
