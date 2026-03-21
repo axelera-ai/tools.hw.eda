@@ -27,42 +27,38 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ci-prod-AWS-CPU-X86_64-EKS
+          - os: production-AWS-CPU-X86_64-EKS
+            runner_labels: production-scale-set-x64-8-32
             arch: amd64
-            label: ubuntu-20.04
-          - os: ci-prod-AWS-CPU-ARM64-EKS
+            label: manylinux_2_28
+            container: quay.io/pypa/manylinux_2_28_x86_64
+          - os: production-AWS-CPU-ARM64-EKS
+            runner_labels: production-scale-set-arm64-8-16
             arch: arm64
-            label: ubuntu-20.04
+            label: manylinux_2_28
+            container: quay.io/pypa/manylinux_2_28_aarch64
           - os: macos-15
             arch: arm64
             label: macos
+            container: ""
 
-    env:
-      CI_OS_NAME: ${{ matrix.label }}
+    runs-on:
+      group: ${{ matrix.os }}
+      labels: ${{ matrix.runner_labels }}
+    container: ${{ matrix.container || null }}
 
-    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: 'true'
           fetch-depth: 0
 
-      - name: Install dependencies
-        if: ${{ contains(matrix.os, 'ci-prod-') }}
+      - name: Install dependencies (Linux)
+        if: ${{ matrix.container != '' }}
         run: |
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          sudo add-apt-repository "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-18 main"
-          sudo add-apt-repository ppa:ubuntu-toolchain-r/test
-          sudo apt-key adv --fetch-keys https://apt.kitware.com/keys/kitware-archive-latest.asc
-          DISTRO_CODENAME=$(lsb_release -cs)
-          sudo apt-add-repository "deb https://apt.kitware.com/ubuntu/ $DISTRO_CODENAME main"
-          sudo apt-get update && \
-          sudo apt-get install -y \
-            gperf build-essential libfmt-dev bison flex libreadline-dev gawk tcl-dev libffi-dev git graphviz xdot pkg-config python3 \
-            libboost-system-dev libboost-python-dev libboost-filesystem-dev zlib1g-dev clang-18 clang-tidy-18 g++-13 g++-11 cmake
-          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100
-          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
-
+          yum install -y \
+            gperf bison flex gawk git pkgconfig zlib-devel zlib-static \
+            clang gcc-toolset-12-gcc-c++ make wget
 
       - uses: maxim-lobanov/setup-xcode@v1
         if: ${{ contains(matrix.os, 'macos') }}
@@ -74,37 +70,51 @@ jobs:
         id: set-up-homebrew
         uses: Homebrew/actions/setup-homebrew@master
 
-      - name: Install packages for build
+      - name: Install packages for build (macOS)
         if: ${{ contains(matrix.os, 'macos') }}
-        working-directory: ${{ env.PKG_NAME }}
         run: |
-          brew install bison flex gawk libffi pkg-config bash autoconf
+          brew install bison flex gawk pkg-config bash autoconf
 
       - name: Configure
         working-directory: ${{ env.PKG_NAME }}
         run: |
             git submodule update --init --recursive
-            make config-clang
+            make config-clang ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0
 
       - name: Build
         working-directory: ${{ env.PKG_NAME }}
         run: |
-            if [ "$CI_OS_NAME" = "macos" ]; then
-              NPROC=$(sysctl -n hw.logicalcpu)
-            else
+            if [ -f /etc/redhat-release ]; then
               NPROC=$(nproc)
+            else
+              NPROC=$(sysctl -n hw.logicalcpu)
             fi
-            make -j "$NPROC"
-            make install PREFIX=`pwd`/install
+            make -j "$NPROC" ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0
+            make install ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0 PREFIX=$(pwd)/install
+
+      - name: Verify linking
+        working-directory: ${{ env.PKG_NAME }}
+        run: |
+            if [ -f /etc/redhat-release ]; then
+              echo "=== ldd output ==="
+              ldd install/bin/yosys || true
+            else
+              echo "=== otool -L output ==="
+              otool -L install/bin/yosys || true
+            fi
 
       # Install yosys-slang plugin
       - name: Build yosys-slang
         working-directory: yosys-slang
         run: |
+          if [ -f /etc/redhat-release ]; then
+            NPROC=$(nproc)
+          else
+            NPROC=$(sysctl -n hw.logicalcpu)
+          fi
           git submodule update --init --recursive
-          make YOSYS_PREFIX=`pwd`/../yosys/install/bin/ CXXFLAGS="-std=c++20 -I`pwd`/../yosys" -j12 CC=clang CXX=clang++
-          mkdir -p `pwd`/../yosys/install/plugins
-          cp build/slang.so `pwd`/../yosys/install/bin
+          make YOSYS_PREFIX=$(pwd)/../yosys/install/bin/ CXXFLAGS="-std=c++20 -I$(pwd)/../yosys" -j"$NPROC" CC=clang CXX=clang++
+          cp build/slang.so $(pwd)/../yosys/install/bin/
 
       - name: Sign and package
         uses: ./.github/actions/package

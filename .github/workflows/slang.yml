@@ -31,40 +31,36 @@ jobs:
             os: production-AWS-CPU-X86_64-EKS
             runner_labels: production-scale-set-x64-8-32
             arch: amd64
-            label: ubuntu-20.04
+            label: manylinux_2_28
+            container: quay.io/pypa/manylinux_2_28_x86_64
           - preset: gcc-11-release
             os: production-AWS-CPU-ARM64-EKS
             runner_labels: production-scale-set-arm64-8-16
             arch: arm64
-            label: ubuntu-20.04
+            label: manylinux_2_28
+            container: quay.io/pypa/manylinux_2_28_aarch64
           - preset: macos-release
             os: macos-latest
             arch: arm64
             label: macos
+            container: ""
 
     runs-on:
       group: ${{ matrix.os }}
       labels: ${{ matrix.runner_labels }}
+    container: ${{ matrix.container || null }}
     steps:
       - uses: actions/checkout@v6
         with:
           submodules: 'true'
           fetch-depth: 0
-      
-      - name: Install dependencies
-        if: ${{ contains(matrix.os, 'production-') }}
+
+      - name: Install dependencies (Linux)
+        if: ${{ matrix.container != '' }}
         run: |
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          sudo add-apt-repository "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-18 main"
-          sudo add-apt-repository ppa:ubuntu-toolchain-r/test
-          sudo apt-key adv --fetch-keys https://apt.kitware.com/keys/kitware-archive-latest.asc
-          DISTRO_CODENAME=$(lsb_release -cs)
-          sudo apt-add-repository "deb https://apt.kitware.com/ubuntu/ $DISTRO_CODENAME main"
-          sudo apt-get update && \
-          sudo apt-get install -y \
-              build-essential \
-              g++-13 g++-11 clang-18 clang-tidy-18 \
-              cmake
+          yum install -y gcc-toolset-11-gcc-c++ cmake3 make
+          # Ensure cmake3 is available as cmake
+          alternatives --install /usr/bin/cmake cmake /usr/bin/cmake3 100 || true
 
       - uses: maxim-lobanov/setup-xcode@v1
         if: matrix.os == 'macos-latest'
@@ -76,7 +72,7 @@ jobs:
         run: |
             cmake --preset ${{ matrix.preset }} \
               -DSLANG_CI_BUILD=ON \
-              -DCMAKE_INSTALL_PREFIX=`pwd`/install
+              -DCMAKE_INSTALL_PREFIX=$(pwd)/install
 
       - name: Build
         working-directory: ${{ env.PKG_NAME }}
@@ -85,6 +81,17 @@ jobs:
       - name: Run tests
         working-directory: ${{ env.PKG_NAME }}
         run: ctest --test-dir build/${{ matrix.preset }} --output-on-failure --no-tests=error -j8
+
+      - name: Verify linking
+        working-directory: ${{ env.PKG_NAME }}
+        run: |
+            if [ -f /etc/redhat-release ]; then
+              echo "=== ldd output ==="
+              ldd install/bin/slang || true
+            else
+              echo "=== otool -L output ==="
+              otool -L install/bin/slang || true
+            fi
 
       - name: Sign and package
         uses: ./.github/actions/package
