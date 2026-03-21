@@ -20,6 +20,7 @@ on:
 
 env:
   PKG_NAME: slang
+  CCACHE_DIR: /tmp/ccache
 
 jobs:
   build:
@@ -58,7 +59,7 @@ jobs:
       - name: Install dependencies (Linux)
         if: ${{ matrix.container != '' }}
         run: |
-          yum install -y gcc-toolset-11-gcc-c++ cmake3 make
+          yum install -y gcc-toolset-11-gcc-c++ cmake3 make ccache
           # Ensure cmake3 is available as cmake
           alternatives --install /usr/bin/cmake cmake /usr/bin/cmake3 100 || true
 
@@ -67,12 +68,32 @@ jobs:
         with:
           xcode-version: ^16.0.0
 
+      - name: Install ccache (macOS)
+        if: ${{ matrix.label == 'macos' }}
+        run: brew install ccache
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-slang-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('slang/**') }}
+          restore-keys: |
+            ccache-slang-${{ matrix.platform }}-${{ matrix.arch }}-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=500M
+          ccache --set-config=compression=true
+          ccache -z
+
       - name: Configure
         working-directory: ${{ env.PKG_NAME }}
         run: |
             cmake --preset ${{ matrix.preset }} \
               -DSLANG_CI_BUILD=ON \
-              -DCMAKE_INSTALL_PREFIX=$(pwd)/install
+              -DCMAKE_INSTALL_PREFIX=$(pwd)/install \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
         working-directory: ${{ env.PKG_NAME }}
@@ -92,6 +113,10 @@ jobs:
               echo "=== otool -L output ==="
               otool -L install/bin/slang || true
             fi
+
+      - name: Print ccache stats
+        if: always()
+        run: ccache -s
 
       - name: Sign and package
         uses: ./.github/actions/package

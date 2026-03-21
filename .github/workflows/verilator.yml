@@ -20,6 +20,7 @@ on:
 
 env:
   PKG_NAME: verilator
+  CCACHE_DIR: /tmp/ccache
 
 jobs:
   build:
@@ -67,13 +68,27 @@ jobs:
         run: |
           yum install -y \
               gcc-c++ make flex bison help2man \
-              gperftools-devel autoconf perl
+              gperftools-devel autoconf perl ccache
 
       - name: Install packages for build (macOS)
         if: ${{ matrix.label == 'macos' }}
         working-directory: ${{ env.PKG_NAME }}
         run: |
           brew install ccache perl gperftools autoconf help2man bison
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-verilator-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('verilator/**') }}
+          restore-keys: |
+            ccache-verilator-${{ matrix.platform }}-${{ matrix.arch }}-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=500M
+          ccache --set-config=compression=true
+          ccache -z
 
       - name: Build
         working-directory: ${{ env.PKG_NAME }}
@@ -85,7 +100,8 @@ jobs:
             fi
             autoconf
             ./configure --prefix=$(pwd)/install
-            make -j "$NPROC" -k
+            ccache -z
+            make -j "$NPROC" -k CXX="ccache g++" CC="ccache gcc"
             make install
 
       - name: Verify linking
@@ -98,6 +114,10 @@ jobs:
               echo "=== otool -L output ==="
               otool -L install/bin/verilator_bin || true
             fi
+
+      - name: Print ccache stats
+        if: always()
+        run: ccache -s
 
       - name: Sign and package
         uses: ./.github/actions/package

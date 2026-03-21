@@ -20,6 +20,7 @@ on:
 
 env:
   PKG_NAME: yosys
+  CCACHE_DIR: /tmp/ccache
 
 jobs:
   build:
@@ -58,7 +59,7 @@ jobs:
         run: |
           yum install -y \
             gperf flex gawk git pkgconfig zlib-devel zlib-static \
-            clang gcc-toolset-12-gcc-c++ make wget m4
+            clang gcc-toolset-12-gcc-c++ make wget m4 ccache
           # yosys v0.63+ requires bison >= 3.6, AlmaLinux 8 ships 3.0.4
           curl -sL https://ftp.gnu.org/gnu/bison/bison-3.8.2.tar.gz | tar xz
           cd bison-3.8.2 && ./configure --prefix=/usr/local && make -j$(nproc) && make install && cd ..
@@ -77,7 +78,21 @@ jobs:
       - name: Install packages for build (macOS)
         if: ${{ matrix.label == 'macos' }}
         run: |
-          brew install bison flex gawk bash autoconf
+          brew install bison flex gawk bash autoconf ccache
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-yosys-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('yosys/**', 'yosys-slang/**') }}
+          restore-keys: |
+            ccache-yosys-${{ matrix.platform }}-${{ matrix.arch }}-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=500M
+          ccache --set-config=compression=true
+          ccache -z
 
       - name: Configure
         working-directory: ${{ env.PKG_NAME }}
@@ -93,7 +108,7 @@ jobs:
             else
               NPROC=$(sysctl -n hw.logicalcpu)
             fi
-            make -j "$NPROC" ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0
+            make -j "$NPROC" ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0 ENABLE_CCACHE=1
             make install ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0 PREFIX=$(pwd)/install
 
       - name: Verify linking
@@ -119,6 +134,10 @@ jobs:
           git submodule update --init --recursive
           make YOSYS_PREFIX=$(pwd)/../yosys/install/bin/ CXXFLAGS="-std=c++20 -I$(pwd)/../yosys" -j"$NPROC" CC=clang CXX=clang++
           cp build/slang.so $(pwd)/../yosys/install/bin/
+
+      - name: Print ccache stats
+        if: always()
+        run: ccache -s
 
       - name: Sign and package
         uses: ./.github/actions/package
