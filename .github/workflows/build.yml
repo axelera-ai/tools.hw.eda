@@ -85,7 +85,11 @@ jobs:
     name: Build (and upload) `slang`
     uses: ./.github/workflows/slang.yml
     needs: [check-submodule, create-release]
-    if: ${{ (always() && needs.check-submodule.outputs.build_slang == 'true') || github.event_name != 'pull_request' }}
+    if: >-
+      ${{
+        always() &&
+        (needs.check-submodule.outputs.build_slang == 'true' || github.event_name != 'pull_request')
+      }}
     with:
       release_version: ${{ needs.create-release.outputs.release_version }}
     secrets:
@@ -98,7 +102,11 @@ jobs:
     name: Build (and upload) `verilator`
     uses: ./.github/workflows/verilator.yml
     needs: [check-submodule, create-release]
-    if: ${{ (always() && needs.check-submodule.outputs.build_verilator == 'true') || github.event_name != 'pull_request' }}
+    if: >-
+      ${{
+        always() &&
+        (needs.check-submodule.outputs.build_verilator == 'true' || github.event_name != 'pull_request')
+      }}
     with:
       release_version: ${{ needs.create-release.outputs.release_version }}
     secrets:
@@ -111,7 +119,11 @@ jobs:
     name: Build (and upload) `yosys`
     uses: ./.github/workflows/yosys.yml
     needs: [check-submodule, create-release]
-    if: ${{ (always() && needs.check-submodule.outputs.build_yosys == 'true') || github.event_name != 'pull_request' }}
+    if: >-
+      ${{
+        always() &&
+        (needs.check-submodule.outputs.build_yosys == 'true' || github.event_name != 'pull_request')
+      }}
     with:
       release_version: ${{ needs.create-release.outputs.release_version }}
     secrets:
