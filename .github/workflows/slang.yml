@@ -20,63 +20,80 @@ on:
 
 env:
   PKG_NAME: slang
+  CCACHE_DIR: /tmp/ccache
 
 jobs:
   build:
+    name: ${{ matrix.platform }} (${{ matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
         include:
           - preset: gcc-11-release
-            os: production-AWS-CPU-X86_64-EKS
-            runner_labels: production-scale-set-x64-8-32
             arch: amd64
-            label: ubuntu-20.04
+            platform: linux
+            label: manylinux_2_28
+            container: quay.io/pypa/manylinux_2_28_x86_64
+            runs_on: '{"group":"production-AWS-CPU-X86_64-EKS","labels":"production-scale-set-x64-8-32"}'
           - preset: gcc-11-release
-            os: production-AWS-CPU-ARM64-EKS
-            runner_labels: production-scale-set-arm64-8-16
             arch: arm64
-            label: ubuntu-20.04
+            platform: linux
+            label: manylinux_2_28
+            container: quay.io/pypa/manylinux_2_28_aarch64
+            runs_on: '{"group":"production-AWS-CPU-ARM64-EKS","labels":"production-scale-set-arm64-8-16"}'
           - preset: macos-release
-            os: macos-latest
             arch: arm64
+            platform: macos
             label: macos
+            container: ""
+            runs_on: '"macos-latest"'
 
-    runs-on:
-      group: ${{ matrix.os }}
-      labels: ${{ matrix.runner_labels }}
+    runs-on: ${{ fromJSON(matrix.runs_on) }}
+    container: ${{ matrix.container || null }}
     steps:
       - uses: actions/checkout@v6
         with:
           submodules: 'true'
           fetch-depth: 0
-      
-      - name: Install dependencies
-        if: ${{ contains(matrix.os, 'production-') }}
+
+      - name: Install dependencies (Linux)
+        if: ${{ matrix.container != '' }}
         run: |
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          sudo add-apt-repository "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-18 main"
-          sudo add-apt-repository ppa:ubuntu-toolchain-r/test
-          sudo apt-key adv --fetch-keys https://apt.kitware.com/keys/kitware-archive-latest.asc
-          DISTRO_CODENAME=$(lsb_release -cs)
-          sudo apt-add-repository "deb https://apt.kitware.com/ubuntu/ $DISTRO_CODENAME main"
-          sudo apt-get update && \
-          sudo apt-get install -y \
-              build-essential \
-              g++-13 g++-11 clang-18 clang-tidy-18 \
-              cmake
+          yum install -y gcc-toolset-11-gcc-c++ cmake3 make ccache
+          # Ensure cmake3 is available as cmake
+          alternatives --install /usr/bin/cmake cmake /usr/bin/cmake3 100 || true
 
       - uses: maxim-lobanov/setup-xcode@v1
-        if: matrix.os == 'macos-latest'
+        if: ${{ matrix.label == 'macos' }}
         with:
           xcode-version: ^16.0.0
+
+      - name: Install ccache (macOS)
+        if: ${{ matrix.label == 'macos' }}
+        run: brew install ccache
+
+      - name: Restore ccache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-slang-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('slang/**') }}
+          restore-keys: |
+            ccache-slang-${{ matrix.platform }}-${{ matrix.arch }}-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=500M
+          ccache --set-config=compression=true
+          ccache -z
 
       - name: Configure
         working-directory: ${{ env.PKG_NAME }}
         run: |
             cmake --preset ${{ matrix.preset }} \
               -DSLANG_CI_BUILD=ON \
-              -DCMAKE_INSTALL_PREFIX=`pwd`/install
+              -DCMAKE_INSTALL_PREFIX=$(pwd)/install \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
         working-directory: ${{ env.PKG_NAME }}
@@ -86,9 +103,23 @@ jobs:
         working-directory: ${{ env.PKG_NAME }}
         run: ctest --test-dir build/${{ matrix.preset }} --output-on-failure --no-tests=error -j8
 
+      - name: Verify linking
+        working-directory: ${{ env.PKG_NAME }}
+        run: |
+            if [ -f /etc/redhat-release ]; then
+              echo "=== ldd output ==="
+              ldd install/bin/slang || true
+            else
+              echo "=== otool -L output ==="
+              otool -L install/bin/slang || true
+            fi
+
+      - name: Print ccache stats
+        if: always()
+        run: ccache -s
+
       - name: Sign and package
         uses: ./.github/actions/package
-        if: ${{ inputs.release_version != '' }}
         with:
             working_directory: ${{ env.PKG_NAME }}
             pkg_name: ${{ env.PKG_NAME }}

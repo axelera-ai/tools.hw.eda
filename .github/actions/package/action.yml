@@ -25,11 +25,13 @@ inputs:
     description: "Apple notary password"
     required: true
   release_version:
-    description: "Release version"
-    required: true
+    description: "Release version (empty to skip release upload)"
+    required: false
+    default: ""
   gh_token:
-    description: "Matrix label"
-    required: true
+    description: "Github token for release upload"
+    required: false
+    default: ""
   apple_id:
     description: "Apple ID"
     default: "florian@zaruba.email"
@@ -48,7 +50,7 @@ runs:
   steps:
     - name: Install certificate
       if: contains(inputs.matrix_label, 'macos')
-      uses: apple-actions/import-codesign-certs@v3
+      uses: apple-actions/import-codesign-certs@v5
       with:
         p12-file-base64: ${{ inputs.apple_cert_data }}
         p12-password: ${{ inputs.apple_cert_password }}
@@ -63,7 +65,7 @@ runs:
           --options=runtime \
           --force --verify --verbose \
           --sign "Developer ID Application: ${{ inputs.apple_id_name }} (${{ inputs.apple_team_id }})" \
-          install/bin/${{ inputs.pkg_name }}*
+          install/bin/*
         ditto -c -k --keepParent install ${{ inputs.pkg_name }}.zip
         xcrun notarytool submit ${{ inputs.pkg_name }}.zip \
             --apple-id ${{ inputs.apple_id }} \
@@ -77,22 +79,39 @@ runs:
       shell: bash
       run: |
         ARCHIVE_NAME="${{ inputs.pkg_name }}-${{ inputs.matrix_arch }}-${{ inputs.matrix_label }}"
+        rm -rf ${{ inputs.pkg_name }}
         mv install ${{ inputs.pkg_name }}
         tar -czf "$ARCHIVE_NAME.tar.gz" ${{ inputs.pkg_name }}
 
+    - name: Upload build artifact
+      if: ${{ inputs.release_version == '' }}
+      uses: actions/upload-artifact@v5
+      with:
+        name: ${{ inputs.pkg_name }}-${{ inputs.matrix_arch }}-${{ inputs.matrix_label }}
+        path: ${{ inputs.working_directory }}/${{ inputs.pkg_name }}/
+
     - name: Install GithubCli
       shell: bash
-      if: ${{ contains(inputs.matrix_label, 'ubuntu-20.04') }}
+      if: ${{ inputs.release_version != '' && !contains(inputs.matrix_label, 'macos') }}
       run: |
-            (type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)) \
-            && sudo mkdir -p -m 755 /etc/apt/keyrings \
-            && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
-            && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
-            && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-            && sudo apt update \
-            && sudo apt install gh -y
+            if command -v apt-get &> /dev/null; then
+              (type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)) \
+              && sudo mkdir -p -m 755 /etc/apt/keyrings \
+              && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+              && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+              && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+              && sudo apt update \
+              && sudo apt install gh -y
+            elif command -v yum &> /dev/null; then
+              yum install -y gh || {
+                ARCH=$(uname -m)
+                GH_VERSION=$(curl -s https://api.github.com/repos/cli/cli/releases/latest | grep -oP '"tag_name": "v\K[^"]+')
+                curl -sL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${ARCH}.tar.gz" | tar xz -C /usr/local --strip-components=1
+              }
+            fi
 
     - name: Upload (.tar.gz) to release
+      if: ${{ inputs.release_version != '' }}
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.gh_token }}

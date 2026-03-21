@@ -20,33 +20,33 @@ on:
 
 env:
   PKG_NAME: verilator
+  CCACHE_DIR: /tmp/ccache
 
 jobs:
   build:
+    name: ${{ matrix.platform }} (${{ matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: production-AWS-CPU-X86_64-EKS
-            runner_labels: production-scale-set-x64-8-32
-            arch: amd64
-            label: ubuntu-20.04
-            generic-os: linux
-          - os: production-AWS-CPU-ARM64-EKS
-            runner_labels: production-scale-set-arm64-8-16
-            arch: arm64
-            label: ubuntu-20.04
-            generic-os: linux
-          - os: macos-latest
-            arch: arm64
+          - arch: amd64
+            platform: linux
+            label: manylinux_2_28
+            container: quay.io/pypa/manylinux_2_28_x86_64
+            runs_on: '{"group":"production-AWS-CPU-X86_64-EKS","labels":"production-scale-set-x64-8-32"}'
+          - arch: arm64
+            platform: linux
+            label: manylinux_2_28
+            container: quay.io/pypa/manylinux_2_28_aarch64
+            runs_on: '{"group":"production-AWS-CPU-ARM64-EKS","labels":"production-scale-set-arm64-8-16"}'
+          - arch: arm64
+            platform: macos
             label: macos
-            generic-os: osx
-    env:
-      CI_OS_NAME: ${{ matrix.generic-os }}
+            container: ""
+            runs_on: '"macos-latest"'
 
-    runs-on:
-      group: ${{ matrix.os }}
-      labels: ${{ matrix.runner_labels }}
+    runs-on: ${{ fromJSON(matrix.runs_on) }}
+    container: ${{ matrix.container || null }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -54,50 +54,73 @@ jobs:
           fetch-depth: 0
 
       - uses: maxim-lobanov/setup-xcode@v1
-        if: matrix.os == 'macos-latest'
+        if: ${{ matrix.label == 'macos' }}
         with:
             xcode-version: 'latest'
 
       - name: Set up Homebrew
-        if: matrix.os == 'macos-latest'
+        if: ${{ matrix.label == 'macos' }}
         id: set-up-homebrew
         uses: Homebrew/actions/setup-homebrew@master
 
-      - name: Install packages for build
-        if: ${{ contains(matrix.os, 'production-') }}
-        working-directory: ${{ env.PKG_NAME }}
+      - name: Install packages for build (Linux)
+        if: ${{ matrix.container != '' }}
         run: |
-          sudo apt-get update && \
-          sudo apt-get install -y \
-              build-essential \
-              ccache help2man libfl-dev \
-              libgoogle-perftools-dev \
-              libsystemc libsystemc-dev \
-              autoconf bison
+          yum install -y \
+              gcc-c++ make flex bison help2man \
+              gperftools-devel autoconf perl ccache
 
-      - name: Install packages for build
-        if: matrix.os == 'macos-latest'
+      - name: Install packages for build (macOS)
+        if: ${{ matrix.label == 'macos' }}
         working-directory: ${{ env.PKG_NAME }}
         run: |
           brew install ccache perl gperftools autoconf help2man bison
 
+      - name: Restore ccache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-verilator-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('verilator/**') }}
+          restore-keys: |
+            ccache-verilator-${{ matrix.platform }}-${{ matrix.arch }}-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=500M
+          ccache --set-config=compression=true
+          ccache -z
+
       - name: Build
         working-directory: ${{ env.PKG_NAME }}
         run: |
-            if [ "$CI_OS_NAME" = "linux" ]; then
+            if [ -f /etc/redhat-release ]; then
                 NPROC=$(nproc)
-            elif [ "$CI_OS_NAME" = "osx" ]; then
+            else
                 NPROC=$(sysctl -n hw.logicalcpu)
             fi
             autoconf
-            ./configure --prefix=`pwd`/install
+            ./configure --prefix=$(pwd)/install
             ccache -z
-            make -j "$NPROC" -k
+            make -j "$NPROC" -k CXX="ccache g++" CC="ccache gcc"
             make install
+
+      - name: Verify linking
+        working-directory: ${{ env.PKG_NAME }}
+        run: |
+            if [ -f /etc/redhat-release ]; then
+              echo "=== ldd output ==="
+              ldd install/bin/verilator_bin || true
+            else
+              echo "=== otool -L output ==="
+              otool -L install/bin/verilator_bin || true
+            fi
+
+      - name: Print ccache stats
+        if: always()
+        run: ccache -s
 
       - name: Sign and package
         uses: ./.github/actions/package
-        if: ${{ inputs.release_version != '' }}
         with:
             working_directory: ${{ env.PKG_NAME }}
             pkg_name: ${{ env.PKG_NAME }}
