@@ -139,6 +139,19 @@ jobs:
             cmake --build . -j"$NPROC"
             cmake --install .
 
+      - name: Bundle TCL dylib (macOS)
+        if: ${{ matrix.label == 'macos' }}
+        working-directory: ${{ env.PKG_NAME }}
+        run: |
+            TCL_PREFIX=$(brew --prefix tcl-tk@8)
+            # Copy TCL dylib into the install
+            mkdir -p install/lib
+            cp ${TCL_PREFIX}/lib/libtcl8.6.dylib install/lib/
+            # Rewrite sta to look for TCL relative to the binary
+            install_name_tool -change ${TCL_PREFIX}/lib/libtcl8.6.dylib @executable_path/../lib/libtcl8.6.dylib install/bin/sta
+            # Copy TCL library scripts needed at runtime
+            cp -r ${TCL_PREFIX}/lib/tcl8.6 install/lib/ || true
+
       - name: Verify build
         working-directory: ${{ env.PKG_NAME }}
         run: |

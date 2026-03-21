@@ -66,6 +66,10 @@ runs:
           --force --verify --verbose \
           --sign "Developer ID Application: ${{ inputs.apple_id_name }} (${{ inputs.apple_team_id }})" \
           install/bin/*
+        # Also sign any bundled dylibs
+        find install/lib -name '*.dylib' -exec codesign \
+          --timestamp --options=runtime --force --verify --verbose \
+          --sign "Developer ID Application: ${{ inputs.apple_id_name }} (${{ inputs.apple_team_id }})" {} \; 2>/dev/null || true
         ditto -c -k --keepParent install ${{ inputs.pkg_name }}.zip
         xcrun notarytool submit ${{ inputs.pkg_name }}.zip \
             --apple-id ${{ inputs.apple_id }} \
