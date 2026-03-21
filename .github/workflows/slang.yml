@@ -31,24 +31,19 @@ jobs:
             arch: amd64
             label: manylinux_2_28
             container: quay.io/pypa/manylinux_2_28_x86_64
-            runner_group: production-AWS-CPU-X86_64-EKS
-            runner_labels: production-scale-set-x64-8-32
+            runs_on: '{"group":"production-AWS-CPU-X86_64-EKS","labels":"production-scale-set-x64-8-32"}'
           - preset: gcc-11-release
             arch: arm64
             label: manylinux_2_28
             container: quay.io/pypa/manylinux_2_28_aarch64
-            runner_group: production-AWS-CPU-ARM64-EKS
-            runner_labels: production-scale-set-arm64-8-16
+            runs_on: '{"group":"production-AWS-CPU-ARM64-EKS","labels":"production-scale-set-arm64-8-16"}'
           - preset: macos-release
             arch: arm64
             label: macos
             container: ""
-            runner_group: Default
-            runner_labels: macos-latest
+            runs_on: '"macos-latest"'
 
-    runs-on:
-      group: ${{ matrix.runner_group }}
-      labels: ${{ matrix.runner_labels }}
+    runs-on: ${{ fromJSON(matrix.runs_on) }}
     container: ${{ matrix.container || null }}
     steps:
       - uses: actions/checkout@v6
