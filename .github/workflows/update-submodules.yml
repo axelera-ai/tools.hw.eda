@@ -1,0 +1,107 @@
+name: Check for upstream releases
+
+on:
+  schedule:
+    # Every Monday at 08:00 UTC
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+jobs:
+  check-releases:
+    name: ${{ matrix.tool }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tool: slang
+            repo: MikePopoloski/slang
+            path: slang
+          - tool: verilator
+            repo: verilator/verilator
+            path: verilator
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Check for new release
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get latest release tag from upstream
+          LATEST=$(gh api repos/${{ matrix.repo }}/releases/latest --jq '.tag_name' 2>/dev/null || echo "")
+          if [ -z "$LATEST" ]; then
+            # No releases — fall back to latest tag
+            LATEST=$(gh api repos/${{ matrix.repo }}/tags --jq '.[0].name' 2>/dev/null || echo "")
+          fi
+          if [ -z "$LATEST" ]; then
+            echo "No releases or tags found for ${{ matrix.repo }}"
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Latest upstream release: ${LATEST}"
+
+          # Get current submodule commit
+          CURRENT_SHA=$(git -C ${{ matrix.path }} rev-parse HEAD)
+
+          # Check if the release tag points to a different commit
+          cd ${{ matrix.path }}
+          git fetch origin --tags
+          RELEASE_SHA=$(git rev-parse "${LATEST}^{}" 2>/dev/null || git rev-parse "${LATEST}" 2>/dev/null || echo "")
+
+          if [ -z "$RELEASE_SHA" ]; then
+            echo "Could not resolve tag ${LATEST}"
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Current SHA: ${CURRENT_SHA}"
+          echo "Release SHA: ${RELEASE_SHA}"
+
+          if [ "$CURRENT_SHA" = "$RELEASE_SHA" ]; then
+            echo "Already at latest release ${LATEST}"
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Update available: ${LATEST}"
+            echo "has_update=true" >> "$GITHUB_OUTPUT"
+            echo "version=${LATEST}" >> "$GITHUB_OUTPUT"
+            echo "release_sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create update PR
+        if: steps.check.outputs.has_update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.check.outputs.version }}"
+          BRANCH="auto/bump-${{ matrix.tool }}-${VERSION}"
+
+          # Check if a PR already exists for this update
+          EXISTING=$(gh pr list --head "${BRANCH}" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$EXISTING" ]; then
+            echo "PR #${EXISTING} already exists for this update"
+            exit 0
+          fi
+
+          # Configure git for commits
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Create branch and update submodule
+          git checkout -b "${BRANCH}"
+          cd ${{ matrix.path }}
+          git checkout "${{ steps.check.outputs.release_sha }}"
+          cd ..
+          git add ${{ matrix.path }}
+          git commit -m "Bump ${{ matrix.tool }} to ${VERSION}"
+          git push origin "${BRANCH}"
+
+          # Create PR
+          gh pr create \
+            --title "Bump \`${{ matrix.tool }}\` to \`${VERSION}\`" \
+            --body "Automated update of \`${{ matrix.tool }}\` to release [${VERSION}](https://github.com/${{ matrix.repo }}/releases/tag/${VERSION})."
