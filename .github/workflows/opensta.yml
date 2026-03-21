@@ -58,9 +58,13 @@ jobs:
         if: ${{ matrix.container != '' }}
         run: |
           yum install -y \
-            gcc-c++ make cmake3 flex swig tcl-devel zlib-devel \
-            pcre-devel wget m4 ccache
+            gcc-c++ make cmake3 flex tcl-devel zlib-devel \
+            pcre-devel wget m4 ccache autoconf automake
           alternatives --install /usr/bin/cmake cmake /usr/bin/cmake3 100 || true
+          # Build SWIG 4.1 from source (4.4.x has code generation bugs with OpenSTA)
+          curl -sL https://github.com/swig/swig/archive/refs/tags/v4.1.1.tar.gz | tar xz
+          cd swig-4.1.1 && ./autogen.sh && ./configure --prefix=/usr/local && make -j$(nproc) && make install && cd ..
+          rm -rf swig-4.1.1
           # Bison >= 3.2 required, AlmaLinux 8 ships 3.0.4
           curl -sL https://ftp.gnu.org/gnu/bison/bison-3.8.2.tar.gz | tar xz
           cd bison-3.8.2 && ./configure --prefix=/usr/local && make -j$(nproc) && make install && cd ..
@@ -83,7 +87,11 @@ jobs:
       - name: Install packages for build (macOS)
         if: ${{ matrix.label == 'macos' }}
         run: |
-          brew install bison flex swig tcl-tk ccache
+          brew install bison flex tcl-tk ccache pcre autoconf automake
+          # Build SWIG 4.1 from source (4.4.x has code generation bugs with OpenSTA)
+          curl -sL https://github.com/swig/swig/archive/refs/tags/v4.1.1.tar.gz | tar xz
+          cd swig-4.1.1 && ./autogen.sh && ./configure --prefix=/usr/local && make -j$(sysctl -n hw.logicalcpu) && make install && cd ..
+          rm -rf swig-4.1.1
 
       - name: Restore ccache
         uses: actions/cache@v5
