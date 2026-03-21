@@ -103,11 +103,9 @@ runs:
               && sudo apt update \
               && sudo apt install gh -y
             elif command -v yum &> /dev/null; then
-              yum install -y gh || {
-                ARCH=$(uname -m)
-                GH_VERSION=$(curl -s https://api.github.com/repos/cli/cli/releases/latest | grep -oP '"tag_name": "v\K[^"]+')
-                curl -sL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${ARCH}.tar.gz" | tar xz -C /usr/local --strip-components=1
-              }
+              ARCH=$(uname -m)
+              GH_VERSION=$(curl -s https://api.github.com/repos/cli/cli/releases/latest | sed -n 's/.*"tag_name": "v\([^"]*\)".*/\1/p')
+              curl -sL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${ARCH}.tar.gz" | tar xz -C /usr/local --strip-components=1
             fi
 
     - name: Upload (.tar.gz) to release
