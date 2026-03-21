@@ -28,25 +28,26 @@ jobs:
       matrix:
         include:
           - preset: gcc-11-release
-            os: production-AWS-CPU-X86_64-EKS
-            runner_labels: production-scale-set-x64-8-32
             arch: amd64
             label: manylinux_2_28
             container: quay.io/pypa/manylinux_2_28_x86_64
+            runner_group: production-AWS-CPU-X86_64-EKS
+            runner_labels: production-scale-set-x64-8-32
           - preset: gcc-11-release
-            os: production-AWS-CPU-ARM64-EKS
-            runner_labels: production-scale-set-arm64-8-16
             arch: arm64
             label: manylinux_2_28
             container: quay.io/pypa/manylinux_2_28_aarch64
+            runner_group: production-AWS-CPU-ARM64-EKS
+            runner_labels: production-scale-set-arm64-8-16
           - preset: macos-release
-            os: macos-latest
             arch: arm64
             label: macos
             container: ""
+            runner_group: Default
+            runner_labels: macos-latest
 
     runs-on:
-      group: ${{ matrix.os }}
+      group: ${{ matrix.runner_group }}
       labels: ${{ matrix.runner_labels }}
     container: ${{ matrix.container || null }}
     steps:
@@ -63,7 +64,7 @@ jobs:
           alternatives --install /usr/bin/cmake cmake /usr/bin/cmake3 100 || true
 
       - uses: maxim-lobanov/setup-xcode@v1
-        if: matrix.os == 'macos-latest'
+        if: ${{ matrix.label == 'macos' }}
         with:
           xcode-version: ^16.0.0
 
