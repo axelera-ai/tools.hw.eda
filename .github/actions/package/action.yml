@@ -93,6 +93,8 @@ runs:
     - name: Install GithubCli
       shell: bash
       if: ${{ inputs.release_version != '' && !contains(inputs.matrix_label, 'macos') }}
+      env:
+        GITHUB_TOKEN: ${{ inputs.gh_token }}
       run: |
             if command -v apt-get &> /dev/null; then
               (type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)) \
@@ -103,9 +105,15 @@ runs:
               && sudo apt update \
               && sudo apt install gh -y
             elif command -v yum &> /dev/null; then
+              GH_VERSION=$(curl -sH "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/cli/cli/releases/latest | sed -n 's/.*"tag_name": "v\([^"]*\)".*/\1/p')
               ARCH=$(uname -m)
-              GH_VERSION=$(curl -s https://api.github.com/repos/cli/cli/releases/latest | sed -n 's/.*"tag_name": "v\([^"]*\)".*/\1/p')
-              curl -sL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${ARCH}.tar.gz" | tar xz -C /usr/local --strip-components=1
+              # gh uses amd64/arm64 naming
+              [ "$ARCH" = "x86_64" ] && ARCH="amd64"
+              [ "$ARCH" = "aarch64" ] && ARCH="arm64"
+              curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${ARCH}.tar.gz" -o /tmp/gh.tar.gz
+              tar xzf /tmp/gh.tar.gz -C /usr/local --strip-components=1
+              rm -f /tmp/gh.tar.gz
+              gh --version
             fi
 
     - name: Upload (.tar.gz) to release
