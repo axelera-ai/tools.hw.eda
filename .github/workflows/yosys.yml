@@ -49,7 +49,7 @@ jobs:
     container: ${{ matrix.container || null }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: 'true'
           fetch-depth: 0
@@ -134,15 +134,19 @@ jobs:
       - name: Re-link yosys with yosys-slang built-in
         working-directory: ${{ env.PKG_NAME }}
         run: |
-            SLANG_DIR=$(pwd)/../yosys-slang/build
+            SLANG_BUILD=$(pwd)/../yosys-slang/build
+            YOSYS_SLANG_LIB=$(find ${SLANG_BUILD} -name 'libyosys-slang.a' | head -1)
+            SVLANG_LIB=$(find ${SLANG_BUILD} -name 'libsvlang.a' | head -1)
+            FMT_LIB=$(find ${SLANG_BUILD} -name 'libfmt.a' | head -1)
+            echo "Found libs: ${YOSYS_SLANG_LIB} ${SVLANG_LIB} ${FMT_LIB}"
             if [ -f /etc/redhat-release ]; then
-              FORCE_LOAD="-Wl,--whole-archive ${SLANG_DIR}/libyosys-slang.a -Wl,--no-whole-archive"
+              FORCE_LOAD="-Wl,--whole-archive ${YOSYS_SLANG_LIB} -Wl,--no-whole-archive"
             else
-              FORCE_LOAD="-Wl,-force_load,${SLANG_DIR}/libyosys-slang.a"
+              FORCE_LOAD="-Wl,-force_load,${YOSYS_SLANG_LIB}"
             fi
             rm -f yosys
             make ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0 ENABLE_CCACHE=1 \
-              EXE_LIBS="${FORCE_LOAD} ${SLANG_DIR}/third_party/slang/lib/libsvlang.a ${SLANG_DIR}/third_party/slang/lib/libfmt.a"
+              EXE_LIBS="${FORCE_LOAD} ${SVLANG_LIB} ${FMT_LIB}"
             make install ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0 PREFIX=$(pwd)/install
 
       - name: Verify build
