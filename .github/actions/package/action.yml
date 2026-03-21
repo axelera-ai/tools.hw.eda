@@ -74,11 +74,21 @@ runs:
             --wait | tee notary.log
         grep -q Accepted notary.log
 
+    - name: Detect tool version
+      id: tool_version
+      working-directory: ${{ inputs.working_directory }}
+      shell: bash
+      run: |
+        # Get version from the nearest git tag
+        TOOL_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || git rev-parse --short HEAD)
+        echo "version=${TOOL_VERSION}" >> "$GITHUB_OUTPUT"
+        echo "Detected tool version: ${TOOL_VERSION}"
+
     - name: Re-name and archive the build directory
       working-directory: ${{ inputs.working_directory }}
       shell: bash
       run: |
-        ARCHIVE_NAME="${{ inputs.pkg_name }}-${{ inputs.matrix_arch }}-${{ inputs.matrix_label }}"
+        ARCHIVE_NAME="${{ inputs.pkg_name }}-${{ steps.tool_version.outputs.version }}-${{ inputs.matrix_arch }}-${{ inputs.matrix_label }}"
         rm -rf ${{ inputs.pkg_name }}
         mv install ${{ inputs.pkg_name }}
         tar -czf "$ARCHIVE_NAME.tar.gz" ${{ inputs.pkg_name }}
@@ -87,7 +97,7 @@ runs:
       if: ${{ inputs.release_version == '' }}
       uses: actions/upload-artifact@v6
       with:
-        name: ${{ inputs.pkg_name }}-${{ inputs.matrix_arch }}-${{ inputs.matrix_label }}
+        name: ${{ inputs.pkg_name }}-${{ steps.tool_version.outputs.version }}-${{ inputs.matrix_arch }}-${{ inputs.matrix_label }}
         path: ${{ inputs.working_directory }}/${{ inputs.pkg_name }}/
 
     - name: Install GithubCli
@@ -124,4 +134,4 @@ runs:
       run: |
         git config --global --add safe.directory "$GITHUB_WORKSPACE" || true
         gh release upload ${{ inputs.release_version }} \
-          ${{ inputs.working_directory }}/${{ inputs.pkg_name }}-${{ inputs.matrix_arch }}-${{ inputs.matrix_label }}.tar.gz --clobber
+          ${{ inputs.working_directory }}/${{ inputs.pkg_name }}-${{ steps.tool_version.outputs.version }}-${{ inputs.matrix_arch }}-${{ inputs.matrix_label }}.tar.gz --clobber
