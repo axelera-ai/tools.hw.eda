@@ -13,3 +13,6 @@
 [submodule "opensta"]
 	path = opensta
 	url = https://github.com/The-OpenROAD-Project/OpenSTA.git
+[submodule "abc"]
+	path = abc
+	url = https://github.com/berkeley-abc/abc.git

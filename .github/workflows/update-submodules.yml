@@ -29,6 +29,9 @@ jobs:
           - tool: opensta
             repo: The-OpenROAD-Project/OpenSTA
             path: opensta
+          - tool: abc
+            repo: berkeley-abc/abc
+            path: abc
 
     steps:
       - uses: actions/checkout@v6

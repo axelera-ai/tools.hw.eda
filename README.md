@@ -11,6 +11,7 @@ Head over to the [releases section](https://github.com/axelera-ai/tools.hw.eda/r
 - [`slang`](https://github.com/MikePopoloski/slang): A SystemVerilog parser and elaborator.
 - [`verilator`](https://github.com/verilator/verilator): A fast SystemVerilog simulator that translates SystemVerilog to C++/SystemC.
 - [`OpenSTA`](https://github.com/The-OpenROAD-Project/OpenSTA): A gate-level static timing analyzer.
+- [`abc`](https://github.com/berkeley-abc/abc): A system for sequential logic synthesis and formal verification.
 
 ## Supported Platforms
 

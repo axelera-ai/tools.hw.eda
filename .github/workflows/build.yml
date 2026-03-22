@@ -54,6 +54,7 @@ jobs:
       build_verilator: ${{ steps.check_submodule_verilator.outputs.build }}
       build_yosys: ${{ steps.check_submodule_yosys.outputs.build }}
       build_opensta: ${{ steps.check_submodule_opensta.outputs.build }}
+      build_abc: ${{ steps.check_submodule_abc.outputs.build }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -85,6 +86,10 @@ jobs:
         id: check_submodule_opensta
         run: |
           ./ci/check_submodule_change.sh opensta
+      - name: Check for submodule changes (abc)
+        id: check_submodule_abc
+        run: |
+          ./ci/check_submodule_change.sh abc
 
   build-and-upload-slang:
     name: Build (and upload) `slang`
@@ -145,6 +150,23 @@ jobs:
       ${{
         always() &&
         (needs.check-submodule.outputs.build_opensta == 'true' || github.event_name != 'pull_request')
+      }}
+    with:
+      release_version: ${{ needs.create-release.outputs.release_version }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      APPLE_CERT_DATA: ${{ secrets.APPLE_CERT_DATA }}
+      APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+      APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+
+  build-and-upload-abc:
+    name: Build (and upload) `abc`
+    uses: ./.github/workflows/abc.yml
+    needs: [check-submodule, create-release]
+    if: >-
+      ${{
+        always() &&
+        (needs.check-submodule.outputs.build_abc == 'true' || github.event_name != 'pull_request')
       }}
     with:
       release_version: ${{ needs.create-release.outputs.release_version }}

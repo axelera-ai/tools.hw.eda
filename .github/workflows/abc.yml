@@ -1,0 +1,125 @@
+name: Build and Upload ABC
+
+on:
+  workflow_call:
+    inputs:
+      release_version:
+        description: "Release Version"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      GH_TOKEN:
+        description: "Github token for release"
+      APPLE_CERT_DATA:
+        description: "API key for deployment"
+      APPLE_CERT_PASSWORD:
+        description: "Access token for secure operations"
+      APPLE_NOTARY_PASSWORD:
+        description: "App specific notary password"
+
+env:
+  PKG_NAME: abc
+  CCACHE_DIR: /tmp/ccache
+
+jobs:
+  build:
+    name: ${{ matrix.platform }} (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux
+            label: manylinux_2_28
+            container: quay.io/pypa/manylinux_2_28_x86_64
+            runs_on: '{"group":"production-AWS-CPU-X86_64-EKS","labels":"production-scale-set-x64-8-32"}'
+          - arch: arm64
+            platform: linux
+            label: manylinux_2_28
+            container: quay.io/pypa/manylinux_2_28_aarch64
+            runs_on: '{"group":"production-AWS-CPU-ARM64-EKS","labels":"production-scale-set-arm64-8-16"}'
+          - arch: arm64
+            platform: macos
+            label: macos
+            container: ""
+            runs_on: '"macos-15"'
+
+    runs-on: ${{ fromJSON(matrix.runs_on) }}
+    container: ${{ matrix.container || null }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: 'true'
+          fetch-depth: 0
+
+      - name: Install dependencies (Linux)
+        if: ${{ matrix.container != '' }}
+        run: |
+          yum install -y gcc-c++ make ccache
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        if: ${{ matrix.label == 'macos' }}
+        with:
+          xcode-version: ^16.0.0
+
+      - name: Install packages for build (macOS)
+        if: ${{ matrix.label == 'macos' }}
+        run: |
+          brew install ccache
+
+      - name: Restore ccache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-abc-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('abc/**') }}
+          restore-keys: |
+            ccache-abc-${{ matrix.platform }}-${{ matrix.arch }}-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=500M
+          ccache --set-config=compression=true
+          ccache -z
+
+      - name: Build
+        working-directory: ${{ env.PKG_NAME }}
+        run: |
+            if [ -f /etc/redhat-release ]; then
+              NPROC=$(nproc)
+            else
+              NPROC=$(sysctl -n hw.logicalcpu)
+            fi
+            make -j"$NPROC" ABC_USE_NO_READLINE=1 CC="ccache gcc" CXX="ccache g++"
+            mkdir -p install/bin
+            cp abc install/bin/
+
+      - name: Verify build
+        working-directory: ${{ env.PKG_NAME }}
+        run: |
+            echo "=== abc version ==="
+            install/bin/abc -c "quit" || true
+            echo "=== Checking dynamic linking ==="
+            if [ -f /etc/redhat-release ]; then
+              ldd install/bin/abc || true
+            else
+              otool -L install/bin/abc || true
+            fi
+
+      - name: Print ccache stats
+        if: always()
+        run: ccache -s
+
+      - name: Sign and package
+        uses: ./.github/actions/package
+        with:
+            working_directory: ${{ env.PKG_NAME }}
+            pkg_name: ${{ env.PKG_NAME }}
+            matrix_arch: ${{ matrix.arch }}
+            matrix_label: ${{ matrix.label }}
+            release_version: ${{ inputs.release_version }}
+            apple_cert_data: ${{ secrets.APPLE_CERT_DATA }}
+            apple_cert_password: ${{ secrets.APPLE_CERT_PASSWORD }}
+            apple_notary_password: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+            gh_token: ${{ secrets.GH_TOKEN  }}
