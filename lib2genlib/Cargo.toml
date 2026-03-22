@@ -1,0 +1,12 @@
+[package]
+name = "lib2genlib"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+memchr = "2"
+clap = { version = "4", features = ["derive"] }
+
+[profile.release]
+lto = true
+strip = true
