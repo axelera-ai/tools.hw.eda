@@ -96,6 +96,7 @@ jobs:
         run: |
             cmake --preset ${{ matrix.preset }} \
               -DSLANG_CI_BUILD=ON \
+              -DFETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER \
               -DCMAKE_INSTALL_PREFIX=$(pwd)/install \
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
