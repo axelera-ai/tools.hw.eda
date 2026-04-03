@@ -1,0 +1,23 @@
+From: Florian Zaruba <florian.zaruba@axelera.ai>
+Subject: [PATCH] Statically link libatomic in partial-static builds
+
+libatomic.so.1 is not part of the manylinux baseline libraries, so
+the Verilator binary fails to load on systems that don't have it in
+the standard library path (e.g., CentOS 8 where libatomic lives in
+/usr/lib/gcc/x86_64-redhat-linux/8/).
+
+Add -static-libatomic alongside -static-libgcc and -static-libstdc++
+in the partial static linking section to eliminate this runtime dependency.
+
+diff --git a/configure.ac b/configure.ac
+index abcdef1..1234567 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -565,6 +565,7 @@ AC_MSG_RESULT($CFG_ENABLE_PARTIAL_STATIC)
+ if test "$CFG_ENABLE_PARTIAL_STATIC" = "yes"; then
+   _MY_LDLIBS_CHECK_OPT(CFG_LDFLAGS_SRC, -static-libgcc)
+   _MY_LDLIBS_CHECK_OPT(CFG_LDFLAGS_SRC, -static-libstdc++)
++  _MY_LDLIBS_CHECK_OPT(CFG_LDFLAGS_SRC, -static-libatomic)
+   _MY_LDLIBS_CHECK_OPT(CFG_LDFLAGS_SRC, -Xlinker -gc-sections)
+   LTCMALLOC="-Wl,--whole-archive -l:libtcmalloc_minimal.a -Wl,--no-whole-archive"
+ else

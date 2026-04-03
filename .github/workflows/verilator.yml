@@ -90,6 +90,13 @@ jobs:
           ccache --set-config=compression=true
           ccache -z
 
+      - name: Apply patches
+        working-directory: ${{ env.PKG_NAME }}
+        run: |
+            for patch in ../patches/verilator/*.patch; do
+              [ -f "$patch" ] && git apply "$patch" && echo "Applied $patch"
+            done
+
       - name: Build
         working-directory: ${{ env.PKG_NAME }}
         run: |
