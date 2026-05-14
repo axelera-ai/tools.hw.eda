@@ -61,7 +61,7 @@ jobs:
       - name: Set up Homebrew
         if: ${{ matrix.label == 'macos' }}
         id: set-up-homebrew
-        uses: Homebrew/actions/setup-homebrew@master
+        uses: Homebrew/actions/setup-homebrew@main
 
       - name: Install packages for build (Linux)
         if: ${{ matrix.container != '' }}
@@ -101,7 +101,9 @@ jobs:
         working-directory: ${{ env.PKG_NAME }}
         run: |
             if [ -f /etc/redhat-release ]; then
-                NPROC=$(nproc)
+                # Cap parallelism on Linux to avoid OOM on V3Const__gen.cpp
+                # (one cc1plus can use >4 GB; runners only have 16 GB)
+                NPROC=2
             else
                 NPROC=$(sysctl -n hw.logicalcpu)
             fi

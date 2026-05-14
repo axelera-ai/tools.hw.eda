@@ -78,7 +78,7 @@ jobs:
       - name: Set up Homebrew
         if: ${{ matrix.label == 'macos' }}
         id: set-up-homebrew
-        uses: Homebrew/actions/setup-homebrew@master
+        uses: Homebrew/actions/setup-homebrew@main
 
       - name: Install packages for build (macOS)
         if: ${{ matrix.label == 'macos' }}
