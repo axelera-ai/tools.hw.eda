@@ -77,7 +77,7 @@ jobs:
           brew install ccache perl gperftools autoconf help2man bison
 
       - name: Restore ccache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ccache-verilator-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('verilator/**') }}
