@@ -7,9 +7,6 @@
 [submodule "yosys"]
 	path = yosys
 	url = https://github.com/YosysHQ/yosys.git
-[submodule "yosys-slang"]
-	path = yosys-slang
-	url = https://github.com/povik/yosys-slang.git
 [submodule "opensta"]
 	path = opensta
 	url = https://github.com/The-OpenROAD-Project/OpenSTA.git

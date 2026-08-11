@@ -70,18 +70,7 @@ jobs:
       - name: Check for submodule changes (yosys)
         id: check_submodule_yosys
         run: |
-          # Check both yosys and yosys-slang; rebuild if either changed
-          YOSYS_SHA_BASE=$(git ls-tree origin/main @ yosys | awk '{ print $3 }')
-          YOSYS_SHA_HEAD=$(git ls-tree HEAD @ yosys | awk '{ print $3 }')
-          SLANG_SHA_BASE=$(git ls-tree origin/main @ yosys-slang | awk '{ print $3 }')
-          SLANG_SHA_HEAD=$(git ls-tree HEAD @ yosys-slang | awk '{ print $3 }')
-          if [ "$YOSYS_SHA_BASE" != "$YOSYS_SHA_HEAD" ] || [ "$SLANG_SHA_BASE" != "$SLANG_SHA_HEAD" ]; then
-            echo "Yosys or yosys-slang submodule changed"
-            echo "build=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No changes in yosys or yosys-slang"
-            echo "build=false" >> "$GITHUB_OUTPUT"
-          fi
+          ./ci/check_submodule_change.sh yosys
       - name: Check for submodule changes (opensta)
         id: check_submodule_opensta
         run: |
