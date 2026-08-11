@@ -65,7 +65,9 @@ jobs:
           cd bison-3.8.2 && ./configure --prefix=/usr/local && make -j$(nproc) && make install && cd ..
           rm -rf bison-3.8.2
           # yosys v0.67 requires cmake >= 3.28; AlmaLinux 8 ships 3.20
-          pip3 install --upgrade "cmake>=3.28"
+          CMAKE_VER=3.30.5
+          curl -sL "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-linux-$(uname -m).tar.gz" \
+            | tar xz -C /usr/local --strip-components=1
 
       - uses: maxim-lobanov/setup-xcode@v1
         if: ${{ matrix.label == 'macos' }}
