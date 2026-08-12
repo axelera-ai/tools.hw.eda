@@ -64,11 +64,15 @@ jobs:
           curl -sL https://ftp.gnu.org/gnu/bison/bison-3.8.2.tar.gz | tar xz
           cd bison-3.8.2 && ./configure --prefix=/usr/local && make -j$(nproc) && make install && cd ..
           rm -rf bison-3.8.2
+          # yosys v0.67 requires cmake >= 3.28; AlmaLinux 8 ships 3.20
+          CMAKE_VER=3.30.5
+          curl -sL "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-linux-$(uname -m).tar.gz" \
+            | tar xz -C /usr/local --strip-components=1
 
       - uses: maxim-lobanov/setup-xcode@v1
         if: ${{ matrix.label == 'macos' }}
         with:
-          xcode-version: ^16.0.0
+          xcode-version: latest
 
       - name: Set up Homebrew
         if: ${{ matrix.label == 'macos' }}
@@ -78,13 +82,13 @@ jobs:
       - name: Install packages for build (macOS)
         if: ${{ matrix.label == 'macos' }}
         run: |
-          brew install bison flex gawk bash autoconf ccache
+          brew install bison flex gawk bash autoconf ccache cmake
 
       - name: Restore ccache
         uses: actions/cache@v6
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-yosys-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('yosys/**', 'yosys-slang/**') }}
+          key: ccache-yosys-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('yosys/**') }}
           restore-keys: |
             ccache-yosys-${{ matrix.platform }}-${{ matrix.arch }}-
 
@@ -98,7 +102,16 @@ jobs:
         working-directory: ${{ env.PKG_NAME }}
         run: |
             git submodule update --init --recursive
-            make config-clang ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0
+            cmake -S . -B build \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_C_COMPILER=clang \
+              -DCMAKE_CXX_COMPILER=clang++ \
+              -DYOSYS_COMPILER_LAUNCHER=ccache \
+              -DYOSYS_WITHOUT_TCL=ON \
+              -DYOSYS_WITHOUT_READLINE=ON \
+              -DYOSYS_WITHOUT_EDITLINE=ON \
+              -DBUILD_SHARED_LIBS=OFF \
+              -DCMAKE_INSTALL_PREFIX=$(pwd)/install
 
       - name: Build yosys
         working-directory: ${{ env.PKG_NAME }}
@@ -108,46 +121,8 @@ jobs:
             else
               NPROC=$(sysctl -n hw.logicalcpu)
             fi
-            make -j "$NPROC" ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0 ENABLE_CCACHE=1
-
-      - name: Build yosys-slang (static)
-        working-directory: yosys-slang
-        run: |
-          git submodule update --init --recursive
-          YOSYS_INCLUDE=$(pwd)/../yosys/install/share/yosys/include
-          # Build as static library first so we have yosys-config available
-          make install ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0 PREFIX=$(pwd)/../yosys/install -C ../yosys
-          cmake -S . -B build \
-            -DYOSYS_CONFIG=$(pwd)/../yosys/install/bin/yosys-config \
-            -DBUILD_AS_PLUGIN=OFF \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER=clang++ \
-            -DCMAKE_C_COMPILER=clang \
-            -DCMAKE_CXX_FLAGS="-I${YOSYS_INCLUDE}"
-          if [ -f /etc/redhat-release ]; then
-            NPROC=$(nproc)
-          else
-            NPROC=$(sysctl -n hw.logicalcpu)
-          fi
-          cmake --build build -j"$NPROC"
-
-      - name: Re-link yosys with yosys-slang built-in
-        working-directory: ${{ env.PKG_NAME }}
-        run: |
-            SLANG_BUILD=$(pwd)/../yosys-slang/build
-            YOSYS_SLANG_LIB=$(find ${SLANG_BUILD} -name 'libyosys-slang.a' | head -1)
-            SVLANG_LIB=$(find ${SLANG_BUILD} -name 'libsvlang.a' | head -1)
-            FMT_LIB=$(find ${SLANG_BUILD} -name 'libfmt.a' | head -1)
-            echo "Found libs: ${YOSYS_SLANG_LIB} ${SVLANG_LIB} ${FMT_LIB}"
-            if [ -f /etc/redhat-release ]; then
-              FORCE_LOAD="-Wl,--whole-archive ${YOSYS_SLANG_LIB} -Wl,--no-whole-archive"
-            else
-              FORCE_LOAD="-Wl,-force_load,${YOSYS_SLANG_LIB}"
-            fi
-            rm -f yosys
-            make ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0 ENABLE_CCACHE=1 \
-              EXE_LIBS="${FORCE_LOAD} ${SVLANG_LIB} ${FMT_LIB}"
-            make install ENABLE_TCL=0 ENABLE_READLINE=0 ENABLE_PLUGINS=0 PREFIX=$(pwd)/install
+            cmake --build build --parallel "$NPROC"
+            cmake --install build --strip
 
       - name: Verify build
         working-directory: ${{ env.PKG_NAME }}
